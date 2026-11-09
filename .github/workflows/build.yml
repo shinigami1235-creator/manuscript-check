@@ -80,6 +80,16 @@ jobs:
           Get-Content (Join-Path $out "selftest.log")
           if ($p.ExitCode -ne 0) { throw "Self test failed" }
 
+      - name: Open the window
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Manuscript Check\Manuscript Check.exe"
+          $out = Join-Path $PWD "uitest"
+          $p = Start-Process -FilePath $exe -ArgumentList @("--uitest", "`"$out`"") -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "The window did not close by itself" }
+          Get-Content (Join-Path $out "uitest.log")
+          if ($p.ExitCode -ne 0) { throw "Window test failed" }
+
       - name: Fetch the WebView2 installer
         shell: pwsh
         run: Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile packaging/MicrosoftEdgeWebview2Setup.exe

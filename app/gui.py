@@ -234,7 +234,45 @@ def selftest(pdf, outdir):
         return 1
 
 
+def uitest(out):
+    """Opens the real window, waits for the page to load and talk to the program, then closes it."""
+    import time
+    import webview
+    os.makedirs(out, exist_ok=True)
+    log = os.path.join(out, "uitest.log")
+    result = {"ok": False}
+    api = Api()
+    page = os.path.join(check.BASE, "ui", "index.html")
+    api._window = webview.create_window("Manuscript Check", page, js_api=api, width=1080, height=760)
+
+    def probe(api):
+        try:
+            bind_drop(api)
+            n = 0
+            for _ in range(60):
+                time.sleep(0.5)
+                try:
+                    n = api._window.evaluate_js("document.querySelectorAll('#format option').length")
+                except Exception:
+                    n = 0
+                if n:
+                    break
+            label = api._window.evaluate_js("document.getElementById('start').textContent")
+            result.update(ok=bool(n), formats=n, start_button=label)
+        except Exception as e:
+            result["error"] = repr(e)
+        finally:
+            with open(log, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(result) + "\n")
+            api._window.destroy()
+
+    webview.start(probe, (api,), gui="edgechromium" if os.name == "nt" else None)
+    return 0 if result["ok"] else 1
+
+
 def main(shell=1, code_dir=None):
+    if len(sys.argv) >= 3 and sys.argv[1] == "--uitest":
+        sys.exit(uitest(sys.argv[2]))
     if len(sys.argv) >= 4 and sys.argv[1] == "--selftest":
         sys.exit(selftest(sys.argv[2], sys.argv[3]))
     if len(sys.argv) >= 2 and sys.argv[1] == "--version":
