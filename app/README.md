@@ -6,6 +6,10 @@ Checks a thesis against a school's thesis format and can make a corrected copy o
 
 Run `Manuscript Check Setup.exe` and press Install. It needs no administrator rights and puts a Manuscript Check icon on the desktop. If Windows shows "Windows protected your PC", press More info, then Run anyway, since the program is not signed by a paid certificate.
 
+## Updates
+
+Each release on GitHub publishes the program code on its own. When Manuscript Check opens it checks for a newer version, downloads only the code and shows "Version 1.0.12 is ready" with a Restart now button. A version that fails to start is skipped and the previous one runs. When a release needs new libraries, the window says a new installer is needed and links to it.
+
 ## Using the window
 
 1. Pick the format at the top.
