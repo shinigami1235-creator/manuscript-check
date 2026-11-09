@@ -1,0 +1,7 @@
+__pycache__/
+build/
+dist/
+packaging/Output/
+packaging/MicrosoftEdgeWebview2Setup.exe
+*.spec
+selftest*/

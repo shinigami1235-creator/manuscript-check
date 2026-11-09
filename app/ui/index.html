@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Manuscript Check</title>
+<style>
+  :root {
+    --paper: #f5f4f0; --panel: #ffffff; --ink: #1d1d1b; --muted: #66645e; --line: #dedbd3;
+    --accent: #1f5c55; --accent-dark: #174640; --fix: #a3241c; --check: #8a5a00; --ok: #2f6b2f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 14px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--paper);
+         display: flex; flex-direction: column; user-select: none; }
+  button { font: inherit; cursor: pointer; border-radius: 4px; border: 1px solid #c9c5bb; background: #fff; color: var(--ink);
+           padding: 6px 14px; }
+  button:hover { background: #f1efe9; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 8px 22px; font-weight: 600; }
+  button.primary:hover { background: var(--accent-dark); }
+  button.link { border: none; background: none; color: var(--accent); padding: 4px 6px; text-decoration: underline; }
+  button.small { padding: 3px 10px; font-size: 13px; }
+  select, input[type=text] { font: inherit; padding: 6px 8px; border: 1px solid #c9c5bb; border-radius: 4px; background: #fff; color: var(--ink); }
+
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+  header .spacer { flex: 1; }
+  header label { color: var(--muted); }
+  header select { min-width: 330px; max-width: 460px; }
+
+  main { flex: 1; overflow: auto; padding: 18px 22px 8px; }
+  .notice { background: #fbf3e2; border: 1px solid #ead7ae; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; }
+
+  #drop { border: 2px dashed #bdb8ac; border-radius: 6px; background: var(--panel); padding: 34px 20px; text-align: center; transition: background .15s; }
+  #drop.over { background: #eef5f3; border-color: var(--accent); }
+  #drop h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  #drop p { margin: 0 0 16px; color: var(--muted); }
+  #drop.compact { padding: 12px 16px; display: flex; align-items: center; gap: 14px; text-align: left; }
+  #drop.compact h2 { font-size: 15px; margin: 0; }
+  #drop.compact p { margin: 0; flex: 1; }
+  #drop .buttons { display: flex; gap: 8px; justify-content: center; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; background: var(--panel); border: 1px solid var(--line); }
+  th { text-align: left; font-weight: 600; font-size: 12.5px; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); background: #faf9f6; }
+  td { padding: 9px 12px; border-bottom: 1px solid #eceae4; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td.name { max-width: 360px; word-break: break-word; }
+  td.name .kind { display: inline-block; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; margin-left: 6px; }
+  td.pages { width: 60px; color: var(--muted); }
+  td.result { width: 210px; }
+  td.actions { width: 330px; text-align: right; white-space: nowrap; }
+  td.actions button { margin-left: 4px; }
+  td.remove { width: 34px; text-align: center; }
+  td.remove button { border: none; background: none; color: var(--muted); font-size: 18px; padding: 0 6px; line-height: 1; }
+  .fixn { color: var(--fix); font-weight: 600; }
+  .checkn { color: var(--check); font-weight: 600; }
+  .clean { color: var(--ok); font-weight: 600; }
+  .working { color: var(--accent); }
+  .failed { color: var(--fix); font-size: 13px; }
+  .bar { height: 3px; background: #e6e3db; border-radius: 2px; overflow: hidden; margin-top: 4px; width: 140px; }
+  .bar i { display: block; height: 100%; width: 35%; background: var(--accent); animation: slide 1.2s infinite ease-in-out; }
+  @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+  footer { background: var(--panel); border-top: 1px solid var(--line); padding: 12px 22px; display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; }
+  footer .where { color: var(--muted); display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
+  footer .where b { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  footer .go { display: flex; gap: 8px; justify-content: flex-end; grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+  label.opt { display: flex; align-items: center; gap: 7px; }
+
+  #modal { position: fixed; inset: 0; background: rgba(29,29,27,.35); display: none; align-items: center; justify-content: center; }
+  #modal.open { display: flex; }
+  .dialog { background: var(--panel); width: 640px; max-height: 86vh; overflow: auto; border-radius: 6px; padding: 22px 26px; box-shadow: 0 10px 40px rgba(0,0,0,.18); }
+  .dialog h2 { margin: 0 0 6px; font-size: 18px; }
+  .dialog p { margin: 6px 0 12px; color: var(--muted); }
+  .dialog ul { padding: 0; margin: 8px 0 16px; list-style: none; border: 1px solid var(--line); border-radius: 4px; }
+  .dialog li { padding: 8px 12px; border-bottom: 1px solid #eceae4; display: flex; gap: 10px; align-items: center; }
+  .dialog li:last-child { border-bottom: none; }
+  .dialog li span { flex: 1; }
+  .dialog li em { color: var(--muted); font-style: normal; font-size: 12.5px; }
+  .dialog .row { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+  .dialog .row input { flex: 1; }
+  .dialog pre { white-space: pre-wrap; background: #faf9f6; border: 1px solid var(--line); border-radius: 4px; padding: 12px; font: 12.5px/1.5 Consolas, monospace; user-select: text; }
+  .dialog .close { display: flex; justify-content: flex-end; margin-top: 8px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Manuscript Check</h1>
+  <div class="spacer"></div>
+  <label for="format">Format</label>
+  <select id="format"></select>
+  <button class="link" id="formatsBtn">Formats</button>
+</header>
+
+<main>
+  <div class="notice hidden" id="noWord">Microsoft Word was not found on this computer, so Word files cannot be checked here. Ask students for a PDF saved from Word.</div>
+
+  <div id="drop">
+    <h2>Drop theses here</h2>
+    <p>PDF or Word files, one or many at a time. A whole folder works too.</p>
+    <div class="buttons">
+      <button id="addFiles">Add files</button>
+      <button id="addFolder">Add a folder</button>
+    </div>
+  </div>
+
+  <table id="list" class="hidden">
+    <thead><tr><th>File</th><th>Pages</th><th>Result</th><th></th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<footer>
+  <label class="opt"><input type="checkbox" id="makeFixed"> Make a corrected copy of each Word file</label>
+  <div class="where"><span>Results are saved in</span> <b id="resultsPath"></b> <button class="link" id="changeFolder">Change</button><button class="link" id="openFolder">Open folder</button></div>
+  <div class="go">
+    <button id="clear">Clear list</button>
+    <button id="summary" class="hidden">Save summary for Excel</button>
+    <button id="start" class="primary" disabled>Check</button>
+  </div>
+</footer>
+
+<div id="modal">
+  <div class="dialog">
+    <h2>Formats</h2>
+    <p>Each format is one school's thesis template. The one picked at the top is used for every check.</p>
+    <ul id="formatList"></ul>
+    <h2>Add a format</h2>
+    <p>Choose the school's template PDF and the program measures it. Put the Word copy of the template next to the PDF with the same name, since the margins are read from it.</p>
+    <div class="row"><input type="text" id="formatName" placeholder="Name of the format, such as Mahidol MSc thesis 2025"><button id="learn">Choose template PDF</button></div>
+    <div id="learnResult" class="hidden">
+      <p id="learnNote"></p>
+      <pre id="learnSummary"></pre>
+    </div>
+    <div class="close"><button class="link" id="openFormats">Open formats folder</button><button id="closeModal">Close</button></div>
+  </div>
+</div>
+
+<script>
+let api = null;
+let S = null;
+let timer = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function resultCell(i) {
+  if (i.status === "waiting") return '<span style="color:var(--muted)">Waiting</span>';
+  if (i.status === "checking") return '<span class="working">Checking</span><div class="bar"><i></i></div>';
+  if (i.status === "fixing") return '<span class="working">Making the corrected copy</span><div class="bar"><i></i></div>';
+  if (i.status === "failed") return `<span class="failed">${esc(i.message)}</span>`;
+  if (!i.fix_count && !i.check_count) return '<span class="clean">Matches the template</span>';
+  const parts = [];
+  if (i.fix_count) parts.push(`<span class="fixn">${i.fix_count} to fix</span>`);
+  if (i.check_count) parts.push(`<span class="checkn">${i.check_count} to check</span>`);
+  return parts.join(", ");
+}
+
+function actionCell(i) {
+  if (i.status !== "done") return "";
+  let h = `<button class="small" data-open="${esc(i.report)}">Report</button>`;
+  h += `<button class="small" data-open="${esc(i.corrections)}">Marked pages</button>`;
+  if (i.fixed) h += `<button class="small" data-open="${esc(i.fixed)}">Corrected copy</button>`;
+  return h;
+}
+
+function render(state) {
+  S = state;
+  const sel = $("format");
+  sel.innerHTML = S.formats.map(f => `<option value="${esc(f.file)}" ${f.file === S.format ? "selected" : ""}>${esc(f.name)}</option>`).join("");
+  $("noWord").classList.toggle("hidden", S.word);
+  $("makeFixed").checked = S.make_fixed;
+  $("makeFixed").disabled = S.running;
+  $("resultsPath").textContent = S.results;
+  $("resultsPath").title = S.results;
+
+  const items = S.items;
+  $("drop").classList.toggle("compact", items.length > 0);
+  $("list").classList.toggle("hidden", items.length === 0);
+  $("list").querySelector("tbody").innerHTML = items.map(i => `
+    <tr>
+      <td class="name">${esc(i.name)}<span class="kind">${i.kind}</span></td>
+      <td class="pages">${i.pages ?? ""}</td>
+      <td class="result">${resultCell(i)}</td>
+      <td class="actions">${actionCell(i)}</td>
+      <td class="remove">${S.running ? "" : `<button title="Remove from the list" data-remove="${i.id}">&times;</button>`}</td>
+    </tr>`).join("");
+
+  const todo = items.filter(i => i.status !== "done").length;
+  const done = items.filter(i => i.status === "done" || i.status === "failed").length;
+  const start = $("start");
+  if (S.running) { start.textContent = "Checking"; start.disabled = true; }
+  else if (todo) { start.textContent = `Check ${todo} ${todo === 1 ? "file" : "files"}`; start.disabled = false; }
+  else { start.textContent = items.length ? "All checked" : "Check"; start.disabled = true; }
+  $("clear").disabled = S.running || !items.length;
+  $("summary").classList.toggle("hidden", !(S.folder && done && !S.running));
+  ["addFiles", "addFolder", "changeFolder", "format"].forEach(id => $(id).disabled = S.running);
+
+  if (S.running && !timer) timer = setInterval(async () => render(await api.state()), 700);
+  if (!S.running && timer) { clearInterval(timer); timer = null; }
+}
+window.refresh = render;
+
+document.addEventListener("click", async (e) => {
+  const t = e.target;
+  if (t.dataset.open) return api.open(t.dataset.open);
+  if (t.dataset.remove) return render(await api.remove(Number(t.dataset.remove)));
+  if (t.dataset.formatfile) return api.open_format_file(t.dataset.formatfile);
+});
+
+function wire() {
+  $("addFiles").onclick = async () => render(await api.add_files());
+  $("addFolder").onclick = async () => render(await api.add_folder());
+  $("start").onclick = async () => render(await api.start());
+  $("clear").onclick = async () => render(await api.clear());
+  $("summary").onclick = () => api.save_summary();
+  $("format").onchange = async (e) => render(await api.set_format(e.target.value));
+  $("makeFixed").onchange = async (e) => render(await api.set_make_fixed(e.target.checked));
+  $("changeFolder").onclick = async () => render(await api.change_folder());
+  $("openFolder").onclick = () => api.open_results();
+  $("formatsBtn").onclick = openModal;
+  $("closeModal").onclick = () => $("modal").classList.remove("open");
+  $("openFormats").onclick = () => api.open_formats_folder();
+  $("learn").onclick = async () => {
+    const r = await api.learn_format($("formatName").value);
+    if (r.cancelled) return;
+    $("learnResult").classList.remove("hidden");
+    if (r.error) { $("learnNote").textContent = r.error; $("learnSummary").textContent = ""; return; }
+    $("learnNote").textContent = "The new format is saved and picked at the top. Read this list against the school's format guide before checking theses with it.";
+    $("learnSummary").textContent = r.summary;
+    render(r.state); fillFormats();
+  };
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach(ev => document.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === "drop" || e.target === document.documentElement) drop.classList.remove("over"); }));
+}
+
+function fillFormats() {
+  $("formatList").innerHTML = S.formats.map(f => `<li><span>${esc(f.name)}</span><em>${f.learned ? "Added on this computer" : "Built in"}</em>
+    <button class="small" data-formatfile="${esc(f.file)}">Open rules file</button></li>`).join("");
+}
+function openModal() { fillFormats(); $("learnResult").classList.add("hidden"); $("modal").classList.add("open"); }
+
+async function boot() { wire(); render(await api.state()); }
+window.addEventListener("pywebviewready", () => { api = window.pywebview.api; boot(); });
+if (location.search.includes("demo")) {
+  const s = document.createElement("script"); s.src = "demo.js"; document.head.appendChild(s);
+}
+</script>
+</body>
+</html>

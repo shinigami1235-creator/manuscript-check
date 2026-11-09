@@ -1,0 +1,68 @@
+{
+  "name": "Thammasat University CICM thesis (TULIBS 2022, English)",
+  "template_file": "TULIBS-Thesis-template-English-Times new_2022",
+
+  "page": { "width_cm": 21.0, "height_cm": 29.7, "tolerance_cm": 0.2,
+            "source": "Template PDF: every page is A4" },
+
+  "fonts": {
+    "name": "Times New Roman",
+    "allowed": ["TimesNewRoman", "Times New Roman", "Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic"],
+    "ignored": ["Symbol", "CambriaMath", "Cambria Math", "SegoeUISymbol", "Wingdings", "MT-Extra", "AngsanaNew", "CordiaNew"],
+    "source": "Template PDF: all visible text is Times New Roman"
+  },
+
+  "sizes": {
+    "body_pt": 12, "heading_pt": 14, "cover_title_pt": 16, "cover_text_pt": 14,
+    "superscript_max_pt": 9.4, "chart_text_max_pt": 10,
+    "source": "Template PDF: body 12 pt, headings 14 pt bold, cover title 16 pt bold, other cover lines 14 pt bold"
+  },
+
+  "margins": {
+    "left_text_cm": 3.81, "right_cm": 2.25, "top_text_cm": 3.0, "bottom_cm": 2.54, "tolerance_cm": 0.12,
+    "source_left": "Template PDF: text starts 3.81 cm (1.5 in) from the left edge",
+    "source_right": "Template Word file: right margin 2.25 cm",
+    "source_top": "Template Word file: top margin 3.0 cm",
+    "source_bottom": "Not set in the template (its Word file says 0.49 cm). 2.54 cm (1 in) is assumed. Confirm with the graduate office."
+  },
+
+  "page_number": {
+    "zone_bottom_cm": 2.95, "right_edge_cm": 18.57, "tolerance_cm": 0.35,
+    "front_style": "paren", "front_starts_at": "ABSTRACT", "body_style": "arabic",
+    "source": "Template PDF: number at the top right, (1), (2), (3) from the Abstract page, then 1, 2, 3 from Chapter 1"
+  },
+
+  "line_spacing": { "expected_cm": 0.74, "fail_below_cm": 0.62,
+    "source": "Template PDF: 12 pt lines sit 0.74 cm apart, which is 1.5 line spacing" },
+
+  "paragraph_indent": { "expected_cm": 2.03, "tolerance_cm": 0.6,
+    "source": "Template PDF and Word file: body text under a heading starts 2.03 cm in from the margin" },
+
+  "section_heading": { "bold": true, "size_pt": 12, "level1_x_cm": 3.81, "tolerance_cm": 0.25,
+    "source": "Template PDF: 1.1 headings are 12 pt bold at the left margin, 1.1.1 and below are indented" },
+
+  "order": ["ABSTRACT", "ACKNOWLEDGEMENTS", "TABLE OF CONTENTS", "LIST OF TABLES", "LIST OF FIGURES",
+            "LIST OF ABBREVIATIONS", "CHAPTER", "REFERENCES", "APPENDICES", "APPENDIX", "BIOGRAPHY"],
+  "required": ["ABSTRACT", "ACKNOWLEDGEMENTS", "TABLE OF CONTENTS", "CHAPTER", "REFERENCES", "BIOGRAPHY"],
+  "not_chapters": ["REFERENCES", "BIBLIOGRAPHY", "APPENDIX", "APPENDICES", "BIOGRAPHY", "VITA"],
+  "order_source": "Template PDF page order",
+
+  "chapter_titles": {
+    "1": "INTRODUCTION", "2": "REVIEW OF LITERATURE", "3": "RESEARCH METHODOLOGY",
+    "4": "RESULTS AND DISCUSSION", "5": "CONCLUSIONS AND RECOMMENDATIONS"
+  },
+
+  "cover_lines": ["BY", "A THESIS SUBMITTED IN PARTIAL FULFILLMENT OF", "THE REQUIREMENTS FOR THE DEGREE OF",
+                  "THAMMASAT UNIVERSITY", "ACADEMIC YEAR"],
+
+  "abstract_fields": ["Thesis Title", "Author", "Degree", "Major Field/Faculty/University", "Thesis Advisor", "Academic Year"],
+  "biography_fields": ["Name", "Educational Attainment"],
+
+  "placeholders": ["Insert text here", "Insert new text here", "Insert keyword", "Insert table title", "Insert figure title",
+                   "INSERT APPENDIX TITLE", "Firstname", "Surname", "Academic Title", "20xx", "20XX", "XXXX",
+                   "Degree Title", "(If any)", "Approval date", "Table xx", "Choose one of the following",
+                   "THESIS OR DISSERTATION", "Main heading", "Subheading", "CHAPTER TITLE", "Insert only bachelor",
+                   "Insert based on reference style", "(For optional)"],
+
+  "template_typos": { "COLLCGE": "COLLEGE" }
+}
