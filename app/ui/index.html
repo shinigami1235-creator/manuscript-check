@@ -30,6 +30,9 @@
 
   main { flex: 1; overflow: auto; padding: 18px 22px 8px; }
   .notice { background: #fbf3e2; border: 1px solid #ead7ae; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; }
+  .notice.update { background: #eef5f3; border-color: #bcd6d0; display: flex; align-items: center; gap: 12px; }
+  .notice.update span { flex: 1; }
+  .version { color: var(--muted); font-size: 12.5px; margin-right: auto; align-self: center; }
 
   #drop { border: 2px dashed #bdb8ac; border-radius: 6px; background: var(--panel); padding: 34px 20px; text-align: center; transition: background .15s; }
   #drop.over { background: #eef5f3; border-color: var(--accent); }
@@ -94,6 +97,7 @@
 </header>
 
 <main>
+  <div class="notice update hidden" id="update"><span id="updateText"></span><button class="small" id="updateBtn"></button></div>
   <div class="notice hidden" id="noWord">Microsoft Word was not found on this computer, so Word files cannot be checked here. Ask students for a PDF saved from Word.</div>
 
   <div id="drop">
@@ -133,7 +137,7 @@
       <p id="learnNote"></p>
       <pre id="learnSummary"></pre>
     </div>
-    <div class="close"><button class="link" id="openFormats">Open formats folder</button><button id="closeModal">Close</button></div>
+    <div class="close"><span class="version" id="versionText"></span><button class="link" id="openFormats">Open formats folder</button><button id="closeModal">Close</button></div>
   </div>
 </div>
 
@@ -235,13 +239,31 @@ function wire() {
   ["dragleave", "drop"].forEach(ev => document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === "drop" || e.target === document.documentElement) drop.classList.remove("over"); }));
 }
 
+async function watchUpdate() {
+  const u = await api.update_status();
+  $("versionText").textContent = `Version ${u.current}`;
+  if (u.status === "checking") return setTimeout(watchUpdate, 3000);
+  const box = $("update"), btn = $("updateBtn");
+  if (u.status === "ready") {
+    $("updateText").textContent = `Version ${u.version} is ready and starts the next time Manuscript Check opens.`;
+    btn.textContent = "Restart now";
+    btn.onclick = async () => { if (!(await api.restart())) $("updateText").textContent = `Version ${u.version} starts once this check finishes and the program is reopened.`; };
+    box.classList.remove("hidden");
+  } else if (u.status === "installer") {
+    $("updateText").textContent = `Version ${u.version} needs a new installer.`;
+    btn.textContent = "Download installer";
+    btn.onclick = () => api.open_url(u.url);
+    box.classList.remove("hidden");
+  }
+}
+
 function fillFormats() {
   $("formatList").innerHTML = S.formats.map(f => `<li><span>${esc(f.name)}</span><em>${f.learned ? "Added on this computer" : "Built in"}</em>
     <button class="small" data-formatfile="${esc(f.file)}">Open rules file</button></li>`).join("");
 }
 function openModal() { fillFormats(); $("learnResult").classList.add("hidden"); $("modal").classList.add("open"); }
 
-async function boot() { wire(); render(await api.state()); }
+async function boot() { wire(); render(await api.state()); watchUpdate(); }
 window.addEventListener("pywebviewready", () => { api = window.pywebview.api; boot(); });
 if (location.search.includes("demo")) {
   const s = document.createElement("script"); s.src = "demo.js"; document.head.appendChild(s);

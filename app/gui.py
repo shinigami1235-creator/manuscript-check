@@ -11,7 +11,15 @@ sys.path.insert(0, HERE)
 import batch  # noqa: E402
 import check  # noqa: E402
 
-VERSION = "1.0"
+def _version():
+    try:
+        with open(os.path.join(HERE, "version.json"), encoding="utf-8") as fh:
+            return json.load(fh)["version"]
+    except Exception:
+        return "1.0.0"
+
+
+VERSION = _version()
 
 
 def open_path(path):
@@ -33,6 +41,8 @@ class Api:
         self._items = []
         self._batch = None
         self._word = None
+        self._shell = 1
+        self._update = {"status": "checking"}
 
     # ---- state for the page
     def state(self):
@@ -139,6 +149,31 @@ class Api:
         open_path(out)
         return out
 
+    # ---- updates
+    def _check_updates(self):
+        try:
+            import updater
+            self._update = updater.check_and_download(self._shell)
+        except Exception as e:
+            self._update = {"status": "offline", "detail": str(e)}
+
+    def update_status(self):
+        return dict(self._update, current=VERSION)
+
+    def restart(self):
+        if self._batch and self._batch.running:
+            return False
+        if getattr(sys, "frozen", False):
+            subprocess.Popen([sys.executable])
+        else:
+            subprocess.Popen([sys.executable, os.path.join(os.path.dirname(HERE), "launcher.py")])
+        self._window.destroy()
+        return True
+
+    def open_url(self, url):
+        import webbrowser
+        return webbrowser.open(url)
+
     # ---- formats
     def learn_format(self, name):
         import webview
@@ -199,11 +234,16 @@ def selftest(pdf, outdir):
         return 1
 
 
-def main():
+def main(shell=1, code_dir=None):
     if len(sys.argv) >= 4 and sys.argv[1] == "--selftest":
         sys.exit(selftest(sys.argv[2], sys.argv[3]))
+    if len(sys.argv) >= 2 and sys.argv[1] == "--version":
+        print(VERSION)
+        return
     import webview
     api = Api()
+    api._shell = shell
+    threading.Thread(target=api._check_updates, daemon=True).start()
     page = os.path.join(check.BASE, "ui", "index.html")
     api._window = webview.create_window("Manuscript Check", page, js_api=api, width=1080, height=760, min_size=(860, 600))
     webview.start(bind_drop, (api,), gui="edgechromium" if os.name == "nt" else None)

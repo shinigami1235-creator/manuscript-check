@@ -30,7 +30,7 @@ logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 PT_TO_CM = 2.54 / 72
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE = getattr(sys, "_MEIPASS", HERE)            # where bundled files sit, in the installed program too
+BASE = HERE   # rules/ and ui/ sit next to the code, both in the installed program and in a downloaded update
 DEFAULT_RULES = os.path.join(BASE, "rules", "tu-cicm-thesis-2022.json")
 USER_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Manuscript Check")
 USER_RULES = os.path.join(USER_DIR, "rules")      # formats learned on this computer

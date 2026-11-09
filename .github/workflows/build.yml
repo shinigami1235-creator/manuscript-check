@@ -1,8 +1,18 @@
-name: Build Windows installer
+name: Build and release
+
+# Every push to main publishes a release. The program on staff computers reads latest.json
+# from the newest release and downloads only the program code. The installer is attached
+# too, for new computers and for releases that raise SHELL in launcher.py.
+#
+# Releases go to this repository. To publish them to a separate public repository instead,
+# add the secrets RELEASE_REPO (owner/name) and RELEASE_TOKEN (a token that can write to it).
 
 on:
   push:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   windows:
@@ -19,28 +29,46 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller==6.11.1
 
+      - name: Version number
+        id: v
+        shell: pwsh
+        env:
+          RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+        run: |
+          $repo = if ($env:RELEASE_REPO) { $env:RELEASE_REPO } else { "${{ github.repository }}" }
+          $version = "1.0.${{ github.run_number }}"
+          $shell = (Select-String -Path launcher.py -Pattern '^SHELL = (\d+)').Matches[0].Groups[1].Value
+          $feed = "https://github.com/$repo/releases/latest/download/latest.json"
+          @{ version = $version; shell = [int]$shell; feed = $feed } | ConvertTo-Json -Compress | Set-Content -Encoding utf8NoBOM app/version.json
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "shell=$shell" >> $env:GITHUB_OUTPUT
+          "repo=$repo" >> $env:GITHUB_OUTPUT
+          Get-Content app/version.json
+
       - name: Test the checker before packaging
-        run: python app/gui.py --selftest tests/sample-thesis.pdf selftest-source
+        run: python launcher.py --selftest tests/sample-thesis.pdf selftest-source
 
       - name: Build the program
         run: >
           pyinstaller --noconfirm --windowed --name "Manuscript Check"
           --icon packaging/icon.ico
-          --paths app
-          --add-data "app/rules;rules"
-          --add-data "app/ui/index.html;ui"
-          --add-data "app/lo_convert.py;."
+          --add-data "app;appcode"
           --collect-all pypdfium2
-          --collect-data pdfminer
+          --collect-all pdfplumber
+          --collect-all pdfminer
+          --collect-all reportlab
+          --collect-all pypdf
+          --collect-all openpyxl
           --collect-all webview
           --collect-all clr_loader
           --collect-all pythonnet
+          --hidden-import clr
+          --collect-submodules lxml
+          --collect-submodules PIL
           --hidden-import win32com.client
           --hidden-import pythoncom
-          --hidden-import openpyxl
-          --hidden-import learn
-          --hidden-import fix
-          app/gui.py
+          --exclude-module tkinter
+          launcher.py
 
       - name: Test the built program
         shell: pwsh
@@ -60,8 +88,8 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
-          & $iscc packaging/installer.iss
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=${{ steps.v.outputs.version }}" packaging/installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
 
       - name: Test the installer
@@ -77,7 +105,33 @@ jobs:
           Get-Content (Join-Path $out "selftest.log")
           if ($q.ExitCode -ne 0) { throw "Installed program self test failed" }
 
+      - name: Package the update
+        shell: pwsh
+        run: |
+          $v = "${{ steps.v.outputs.version }}"
+          $repo = "${{ steps.v.outputs.repo }}"
+          New-Item -ItemType Directory -Force release | Out-Null
+          Get-ChildItem app -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+          Compress-Archive -Path app\* -DestinationPath "release\appcode-$v.zip"
+          Copy-Item "packaging\Output\Manuscript Check Setup.exe" "release\Manuscript-Check-Setup-$v.exe"
+          $hash = (Get-FileHash "release\appcode-$v.zip" -Algorithm SHA256).Hash.ToLower()
+          $base = "https://github.com/$repo/releases/download/v$v"
+          $notes = (git log -1 --pretty=%s)
+          @{ version = $v; shell = [int]"${{ steps.v.outputs.shell }}"; sha256 = $hash
+             code_url = "$base/appcode-$v.zip"; installer_url = "$base/Manuscript-Check-Setup-$v.exe"; notes = $notes } |
+            ConvertTo-Json | Set-Content -Encoding utf8NoBOM release\latest.json
+          Get-Content release\latest.json
+
       - uses: actions/upload-artifact@v4
         with:
-          name: Manuscript-Check-Setup
-          path: packaging/Output/Manuscript Check Setup.exe
+          name: Manuscript-Check-${{ steps.v.outputs.version }}
+          path: release/
+
+      - name: Publish the release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          $v = "${{ steps.v.outputs.version }}"
+          gh release create "v$v" release/* --repo "${{ steps.v.outputs.repo }}" --title "Manuscript Check $v" --notes "$(git log -1 --pretty=%B)"
