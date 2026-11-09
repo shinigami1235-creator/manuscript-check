@@ -2,11 +2,22 @@
 
 Checks a thesis against a school's thesis format and can make a corrected copy of a thesis Word file. It comes with the TULIBS template (Thammasat, CICM, English, Times New Roman, 2022) and can learn other formats from their templates. Everything runs on this computer with no internet once it is set up.
 
-## Setup
+## Installing
 
-Install Python 3.10 or newer, then run this once in this folder while connected to the internet:
+Run `Manuscript Check Setup.exe` and press Install. It needs no administrator rights and puts a Manuscript Check icon on the desktop. If Windows shows "Windows protected your PC", press More info, then Run anyway, since the program is not signed by a paid certificate.
 
-    pip install -r requirements.txt
+## Using the window
+
+1. Pick the format at the top.
+2. Drop thesis files or a folder onto the window, or press Add files.
+3. Press Check. Each file gets a result, and its Report, Marked pages and Corrected copy buttons open what was made.
+4. Press Save summary for Excel for one spreadsheet of the whole batch.
+
+Results are saved in Documents\Manuscript Check results, one folder per check and one folder per thesis inside it. Change the folder at the bottom of the window.
+
+## Command line
+
+The window runs the same steps as these files. To run them without the window, install Python 3.10 or newer, run `pip install -r requirements.txt` once, then use the files below.
 
 ## Checking a thesis
 
