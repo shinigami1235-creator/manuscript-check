@@ -145,3 +145,27 @@ jobs:
         run: |
           $v = "${{ steps.v.outputs.version }}"
           gh release create "v$v" release/* --repo "${{ steps.v.outputs.repo }}" --title "Manuscript Check $v" --notes "$(git log -1 --pretty=%B)"
+
+      - name: Test updating from the previous release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          $repo = "${{ steps.v.outputs.repo }}"
+          $new = "${{ steps.v.outputs.version }}"
+          $prev = (gh api "repos/$repo/releases" --jq '.[1].tag_name').TrimStart("v")
+          if (-not $prev -or [version]$prev -lt [version]"1.0.3") { "No earlier release that can run this test"; exit 0 }
+          gh release download "v$prev" --repo $repo --pattern "Manuscript-Check-Setup-*.exe" --dir old
+          $setup = Get-ChildItem old\*.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA "Manuscript Check\updates") -ErrorAction SilentlyContinue
+          $exe = Join-Path $env:LOCALAPPDATA "Programs\Manuscript Check\Manuscript Check.exe"
+          $out = Join-Path $PWD "updatetest"
+          Start-Sleep 20
+          $q = Start-Process -FilePath $exe -ArgumentList @("--updatetest", "`"$out`"") -Wait -PassThru
+          Get-Content (Join-Path $out "update.log")
+          $r = Start-Process -FilePath $exe -ArgumentList @("--whichversion", "`"$out`"") -Wait -PassThru
+          $now = (Get-Content (Join-Path $out "version.txt"))[0]
+          "Installed $prev, now starts as $now"
+          if ($now -ne $new) { throw "Update from $prev to $new did not take" }

@@ -273,6 +273,17 @@ def uitest(out):
 def main(shell=1, code_dir=None):
     if len(sys.argv) >= 3 and sys.argv[1] == "--uitest":
         sys.exit(uitest(sys.argv[2]))
+    if len(sys.argv) >= 3 and sys.argv[1] in ("--updatetest", "--whichversion"):
+        os.makedirs(sys.argv[2], exist_ok=True)
+        if sys.argv[1] == "--whichversion":
+            with open(os.path.join(sys.argv[2], "version.txt"), "w") as fh:
+                fh.write(VERSION + "\n" + (code_dir or HERE) + "\n")
+            sys.exit(0)
+        import updater
+        r = updater.check_and_download(shell)
+        with open(os.path.join(sys.argv[2], "update.log"), "w") as fh:
+            fh.write(json.dumps(r) + "\n")
+        sys.exit(0 if r.get("status") in ("ready", "current") else 1)
     if len(sys.argv) >= 4 and sys.argv[1] == "--selftest":
         sys.exit(selftest(sys.argv[2], sys.argv[3]))
     if len(sys.argv) >= 2 and sys.argv[1] == "--version":
