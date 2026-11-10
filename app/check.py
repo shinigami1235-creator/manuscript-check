@@ -3,7 +3,7 @@
 Checks a thesis PDF (or a Word file, converted to PDF first) against the
 measured layout of a school template and writes two files next to it:
   <name> - format report.html   the list of problems, page by page
-  <name> - corrections.pdf      printable sheets: every page with a problem, boxed and numbered
+  <name> - marked pages.pdf     printable sheets: every page with a problem, boxed and numbered
 
 Usage:
   python check.py "My Thesis.pdf"
@@ -366,10 +366,10 @@ def check_page_size(pages, rules, F):
     bad = [p.no for p in pages if not a4(p.width, p.height) and not a4(p.height, p.width)]
     land = [p.no for p in pages if a4(p.height, p.width)]
     if land:
-        F.add("check", "Page setup", f"{pg(land, True)} {isare(land)} landscape. The template has one landscape page, for a wide table.", land[0], r["source"])
+        F.add("check", "Page setup", f"{pg(land, True)} {isare(land)} landscape. The template uses a landscape page only for a wide table.", land[0], r["source"])
     if bad:
         p = pages[bad[0] - 1]
-        F.add("fix", "Page setup", f"{pg(bad, True)} {isare(bad)} {r2(p.width)} x {r2(p.height)} cm while the template is A4 (21.0 x 29.7 cm).",
+        F.add("fix", "Page setup", f"{pg(bad, True)} {isare(bad)} {r2(p.width)} x {r2(p.height)} cm. Set the paper size to A4 (21.0 x 29.7 cm).",
               None, r["source"])
 
 
@@ -408,8 +408,8 @@ def check_fonts(pages, rules, F):
                     boxes.append((p.no, l.bbox_pt()))
                     if l.size > rules["sizes"]["chart_text_max_pt"]:
                         small = False
-        where = "chart or pasted table" if small else "text"
-        F.add("fix", "Font", f"{family} is used in {where} on {pg([p.no for p in ps])} while the template uses {want} throughout.",
+        where = "a chart or pasted table" if small else "the text"
+        F.add("fix", "Font", f"{pg([p.no for p in ps], True)} {'uses' if len(ps) == 1 else 'use'} {family} in {where}. Change it to {want}.",
               ps[0].no, rules["fonts"]["source"], boxes[:40])
 
 
@@ -444,11 +444,11 @@ def check_body_size(pages, rules, F):
     for sec, d in by_section.items():
         sizes = ", ".join(f"{s:g} pt" for s, _ in d["sizes"].most_common())
         n = sum(d["sizes"].values())
-        F.add("fix", "Text size", f"{sec}: {n} {'line is' if n == 1 else 'lines are'} {sizes} on {pg(d['pages'])} while body text in the template is {body} pt.",
+        F.add("fix", "Text size", f"{sec}: {n} {'line' if n == 1 else 'lines'} on {pg(d['pages'])} {'is' if n == 1 else 'are'} {sizes}. Set {'it' if n == 1 else 'them'} to {body:g} pt.",
               min(d["pages"]), rules["sizes"]["source"], d["boxes"][:60])
     for sec, d in table_text.items():
         sizes = ", ".join(f"{s:g} pt" for s, _ in d["sizes"].most_common())
-        F.add("check", "Text size", f"{sec}: text inside tables or charts is {sizes} on {pg(d['pages'])}. The template does not set a size for table text.",
+        F.add("check", "Text size", f"{sec}: text in tables and charts on {pg(d['pages'])} is {sizes}. The template sets no size for table text.",
               min(d["pages"]), rules["sizes"]["source"], d["boxes"][:60])
 
 
@@ -489,32 +489,32 @@ def check_margins(pages, rules, F):
         allx = [(l.x0, pn) for pn, ls in issues["left"].items() for l in ls]
         common = Counter(round(x, 1) for x, _ in allx).most_common(1)[0][0]
         worst, wp = min(allx)
-        extra = f", and as close as {r2(worst)} cm on page {wp}," if worst < common - 0.2 else ""
-        F.add("fix", "Margins", f"Text starts {common:.2f} cm from the left edge on {pg(list(issues['left']))}{extra} while the template starts text at {m['left_text_cm']} cm.",
+        extra = f" ({r2(worst)} cm on page {wp})" if worst < common - 0.2 else ""
+        F.add("fix", "Margins", f"Text starts {common:.2f} cm from the left edge on {pg(list(issues['left']))}{extra}. Set the left margin so text starts at {m['left_text_cm']} cm.",
               min(issues["left"]), m["source_left"], boxes(issues["left"]))
     if issues["right"]:
         worst = max(l.x1 for ls in issues["right"].values() for l in ls)
-        F.add("fix", "Margins", f"Text runs to {r2(worst)} cm from the left edge on {pg(list(issues['right']))}, past the {m['right_cm']} cm right margin.",
+        F.add("fix", "Margins", f"Text on {pg(list(issues['right']))} runs into the {m['right_cm']} cm right margin, reaching {r2(worst)} cm from the left edge. Make it fit inside the margins.",
               min(issues["right"]), m["source_right"], boxes(issues["right"]))
     if issues["top"]:
-        F.add("fix", "Margins", f"Text sits inside the {m['top_text_cm']} cm top margin on {pg(list(issues['top']))}.",
+        F.add("fix", "Margins", f"Text on {pg(list(issues['top']))} starts inside the {m['top_text_cm']} cm top margin. Move it down below the margin.",
               min(issues["top"]), m["source_top"], boxes(issues["top"]))
     if issues["bottom"]:
         worst = max(l.bottom for ls in issues["bottom"].values() for l in ls)
-        F.add("check", "Margins", f"Text goes down to {r2(pages[0].height - worst)} cm from the bottom edge on {pg(list(issues['bottom']))}. "
-              f"The bottom margin is checked at {m['bottom_cm']} cm.", min(issues["bottom"]), m["source_bottom"], boxes(issues["bottom"]))
+        F.add("check", "Margins", f"Text on {pg(list(issues['bottom']))} comes within {r2(pages[0].height - worst)} cm of the bottom edge. "
+              f"A {m['bottom_cm']} cm bottom margin is assumed.", min(issues["bottom"]), m["source_bottom"], boxes(issues["bottom"]))
     if issues["img_r"]:
         worst = max(i[2] for ims in issues["img_r"].values() for i in ims)
         bx = [(pn, (a / PT_TO_CM, b / PT_TO_CM, c / PT_TO_CM, d / PT_TO_CM)) for pn, ims in issues["img_r"].items() for (a, b, c, d) in ims]
-        F.add("fix", "Margins", f"Pictures run to {r2(worst)} cm from the left edge on {pg(list(issues['img_r']))}, past the {m['right_cm']} cm right margin.",
+        F.add("fix", "Margins", f"Pictures on {pg(list(issues['img_r']))} run into the {m['right_cm']} cm right margin. Make them fit inside the margins.",
               min(issues["img_r"]), m["source_right"], bx)
     if issues["img"]:
         bx = [(pn, (a / PT_TO_CM, b / PT_TO_CM, c / PT_TO_CM, d / PT_TO_CM)) for pn, ims in issues["img"].items() for (a, b, c, d) in ims]
         worst = min(i[0] for ims in issues["img"].values() for i in ims)
         allx = [(i[0], pn) for pn, ims in issues["img"].items() for i in ims]
         common = Counter(round(x, 1) for x, _ in allx).most_common(1)[0][0]
-        extra = f", and {r2(worst)} cm on page {min(allx)[1]}," if worst < common - 0.2 else ""
-        F.add("fix", "Margins", f"Pictures start {common:.2f} cm from the left edge on {pg(list(issues['img']))}{extra} while the template starts text at {m['left_text_cm']} cm.",
+        extra = f" ({r2(worst)} cm on page {min(allx)[1]})" if worst < common - 0.2 else ""
+        F.add("fix", "Margins", f"Pictures start {common:.2f} cm from the left edge on {pg(list(issues['img']))}{extra}. Keep them inside the left margin at {m['left_text_cm']} cm.",
               min(issues["img"]), m["source_left"], bx)
 
 
@@ -522,7 +522,7 @@ def check_page_numbers(pages, rules, F):
     r = rules["page_number"]
     numbered_early = [p.no for p in pages if p.kind in ("cover", "approval") and p.label]
     if numbered_early:
-        F.add("fix", "Page numbers", f"{pg(numbered_early, True)} (cover or approval page) carry a page number while the template leaves them unnumbered.",
+        F.add("fix", "Page numbers", f"The cover and approval pages ({pg(numbered_early)}) have page numbers. Remove them.",
               numbered_early[0], r["source"])
     front = [p for p in pages if p.kind == "front"]
     body = [p for p in pages if p.kind in ("chapter", "back")]
@@ -534,16 +534,16 @@ def check_page_numbers(pages, rules, F):
         missing = [p for p in group if not p.label]
         if wrong_style:
             first = wrong_style[0]
-            F.add("fix", "Page numbers", f"{pg([p.no for p in wrong_style], True)} {isare([p.no for p in wrong_style])} numbered {STYLE_NAME[wrong_style[0].label[0]]} "
-                  f"while the template numbers {start_name} {STYLE_NAME[style]}.", first.no, r["source"],
+            F.add("fix", "Page numbers", f"{pg([p.no for p in wrong_style], True)} {isare([p.no for p in wrong_style])} numbered {STYLE_NAME[wrong_style[0].label[0]]}. "
+                  f"Number {start_name} {STYLE_NAME[style]}.", first.no, r["source"],
                   [(p.no, p.label_line.bbox_pt()) for p in wrong_style])
         if missing:
-            F.add("fix", "Page numbers", f"{pg([p.no for p in missing], True)} {'has' if len(missing) == 1 else 'have'} no page number.", missing[0].no, r["source"])
+            F.add("fix", "Page numbers", f"{pg([p.no for p in missing], True)} {'has' if len(missing) == 1 else 'have'} no page number. Add {'it' if len(missing) == 1 else 'them'}.", missing[0].no, r["source"])
         expected = 1
         for p in group:
             if p.label:
                 if p.label[1] != expected:
-                    F.add("fix", "Page numbers", f"Page shows {p.shown} where {expected} comes next in sequence.", p.no, r["source"],
+                    F.add("fix", "Page numbers", f"The page number jumps to {p.shown} where {expected} should come next.", p.no, r["source"],
                           [(p.no, p.label_line.bbox_pt())])
                     expected = p.label[1]
                 expected += 1
@@ -551,14 +551,14 @@ def check_page_numbers(pages, rules, F):
                 expected += 1
 
     run(front, r["front_style"], "the pages from the Abstract to the lists")
-    run(body, r["body_style"], "everything from Chapter 1 on")
+    run(body, r["body_style"], "the pages from Chapter 1 on")
     labelled = [p for p in pages if p.label_line and p.width < p.height]
     if r.get("align", "right") == "center":
         mid = r.get("center_cm") or text_center(rules, labelled[0] if labelled else pages[0])
         off = [p for p in labelled if abs(p.label_line.center - mid) > r["tolerance_cm"]]
         if off:
             F.add("check", "Page numbers", f"The page number on {pg([p.no for p in off])} sits {r2(off[0].label_line.center)} cm from the left edge "
-                  f"while the template centres it at {r2(mid)} cm.",
+                  f"and the template centres it at {r2(mid)} cm.",
                   off[0].no, r["source"], [(p.no, p.label_line.bbox_pt()) for p in off])
         return
     groups = defaultdict(list)
@@ -569,12 +569,12 @@ def check_page_numbers(pages, rules, F):
         nos = [p.no for p in ps]
         if len(ps) >= 2 and max(x1s) - min(x1s) > 0.15:
             x0 = statistics.median(p.label_line.x0 for p in ps)
-            F.add("check", "Page numbers", f"The page number on {pg(nos)} is aligned left at {x0:.1f} cm from the left edge while the template aligns it right, ending at {r['right_edge_cm']} cm.",
+            F.add("check", "Page numbers", f"The page number on {pg(nos)} is aligned left at {x0:.1f} cm from the left edge. Align it right so it ends at {r['right_edge_cm']} cm.",
                   nos[0], r["source"], [(p.no, p.label_line.bbox_pt()) for p in ps])
         else:
             far = [p for p in ps if abs(p.label_line.x1 - r["right_edge_cm"]) > r["tolerance_cm"]]
             if far:
-                F.add("check", "Page numbers", f"The page number on {pg([p.no for p in far])} ends {r2(far[0].label_line.x1)} cm from the left edge while the template ends it at {r['right_edge_cm']} cm.",
+                F.add("check", "Page numbers", f"The page number on {pg([p.no for p in far])} ends {r2(far[0].label_line.x1)} cm from the left edge and the template ends it at {r['right_edge_cm']} cm.",
                       far[0].no, r["source"], [(p.no, p.label_line.bbox_pt()) for p in far])
 
 
@@ -587,7 +587,7 @@ def check_structure(pages, headings, rules, F):
     keys = [heading_key(h) for h in headings]
     present = {h["name"] for h in headings}
     if rules.get("approval_page", True) and not any(p.kind == "approval" for p in pages):
-        F.add("fix", "Structure", "No approval page was found after the cover.", 2, src)
+        F.add("fix", "Structure", "There is no approval page after the cover. Add it.", 2, src)
     for req in rules["required"]:
         if req == "CHAPTER":
             ok = any(h["name"] == "CHAPTER" and h["title"] not in rules["not_chapters"] for h in headings)
@@ -599,22 +599,22 @@ def check_structure(pages, headings, rules, F):
             alias = next((h for h in headings for g in ALIASES if req in g and (h["name"] in g or h.get("title") in g)), None)
             if alias:
                 got = alias["title"] if alias["name"] == "CHAPTER" else alias["name"]
-                F.add("fix", "Structure", f"The page headed {got} is headed {req} in the template.", alias["page"].no, src,
+                F.add("fix", "Structure", f"The page headed {got} should be headed {req}.", alias["page"].no, src,
                       [(alias["page"].no, l.bbox_pt()) for l in alias["lines"]])
             else:
-                F.add("fix", "Structure", f"No {req} heading was found.", None, src)
+                F.add("fix", "Structure", f"There is no {req} page. Add it.", None, src)
 
     # back matter dressed up as a chapter
     for h in headings:
         if h["name"] == "CHAPTER":
             t = h["title"]
             if not t:
-                F.add("fix", "Structure", f"CHAPTER {h['number']} has no title.", h["page"].no, src, [(h["page"].no, l.bbox_pt()) for l in h["lines"]])
+                F.add("fix", "Structure", f"CHAPTER {h['number']} has no title. Add the chapter title on the line below it.", h["page"].no, src, [(h["page"].no, l.bbox_pt()) for l in h["lines"]])
             elif any(t == n or t.startswith(n) for n in rules["not_chapters"]):
                 noun = {"REFERENCES": "The references are", "BIBLIOGRAPHY": "The bibliography is", "APPENDIX": "The appendix is", "APPENDICES": "The appendices are",
                         "BIOGRAPHY": "The biography is", "VITA": "The vita is"}.get(t.split()[0], f"{t} is")
                 head = {"APPENDIX": "APPENDICES, then APPENDIX A, B, C"}.get(t.split()[0], t.split()[0])
-                F.add("fix", "Structure", f"{noun} headed CHAPTER {h['number']} while the template heads {'it' if ' is' in noun else 'them'} {head} with no chapter number.",
+                F.add("fix", "Structure", f"{noun} headed CHAPTER {h['number']}. Head {'it' if ' is' in noun else 'them'} {head} with no chapter number.",
                       h["page"].no, src, [(h["page"].no, l.bbox_pt()) for l in h["lines"]])
 
     # order
@@ -645,20 +645,20 @@ def check_structure(pages, headings, rules, F):
     for h in headings:
         r = rank_of(h)
         if r < last:
-            F.add("fix", "Structure", f"{shown_name(h)} comes after {last_name} while the template puts {shown_name(h)} first.", h["page"].no, src)
+            F.add("fix", "Structure", f"{shown_name(h)} comes after {last_name}. Move {shown_name(h)} before {last_name}.", h["page"].no, src)
         else:
             last, last_name = r, shown_name(h)
     # chapter numbers in sequence
     nums = [h["number"] for h in headings if h["name"] == "CHAPTER"]
     for a, b in zip(nums, nums[1:]):
         if b != a + 1:
-            F.add("fix", "Structure", f"CHAPTER {b} follows CHAPTER {a}.", None, src)
+            F.add("fix", "Structure", f"CHAPTER {b} comes straight after CHAPTER {a}. Renumber the chapters.", None, src)
     # chapter titles 1 to 5 against the template
     for h in headings:
         if h["name"] == "CHAPTER":
             want = rules["chapter_titles"].get(str(h["number"]))
             if want and h["title"] and h["title"] != want and not any(h["title"].startswith(n) for n in rules["not_chapters"]):
-                F.add("check", "Structure", f"CHAPTER {h['number']} is titled {h['title']} while the template names it {want}.",
+                F.add("check", "Structure", f"CHAPTER {h['number']} is titled {h['title']} and the template names it {want}.",
                       h["page"].no, "Template PDF chapter titles. Chapters 6 to 8 are open in the template, so other names may be accepted.")
 
     # how each heading looks
@@ -667,7 +667,7 @@ def check_structure(pages, headings, rules, F):
         p = h["page"]
         before = [l for l in p.lines[:h["index"]] if l not in h["lines"]]
         if h["name"] not in ("ABSTRACT",) and before:
-            F.add("fix", "Headings", f"{heading_key(h)} does not start at the top of a new page.", p.no, src, [(p.no, h["lines"][0].bbox_pt())])
+            F.add("fix", "Headings", f"{heading_key(h)} does not start on a new page. Put a page break before it.", p.no, src, [(p.no, h["lines"][0].bbox_pt())])
         for l in h["lines"]:
             probs = []
             if abs(l.size - hp) > 0.3:
@@ -675,14 +675,14 @@ def check_structure(pages, headings, rules, F):
             if not l.bold:
                 probs.append("not bold")
             if abs(l.center - text_center(rules, p)) > 0.6:
-                probs.append("not centred")
+                probs.append("off centre")
             if l.text.upper() != l.text:
-                probs.append("not in capitals")
+                probs.append("in mixed case")
             if probs:
-                F.add("fix", "Headings", f"Heading \"{norm(l.text)}\" is {join_and(probs)} while the template sets headings in {hp:g} pt bold capitals, centred.",
+                F.add("fix", "Headings", f"The heading \"{norm(l.text)}\" is {join_and(probs)}. Set it in {hp:g} pt bold capitals, centred.",
                       p.no, rules["sizes"]["source"], [(p.no, l.bbox_pt())])
         if h["name"] == "CHAPTER" and h.get("same_line"):
-            F.add("fix", "Headings", f"CHAPTER {h['number']} and its title share one line while the template puts the title on the line below.",
+            F.add("fix", "Headings", f"CHAPTER {h['number']} and its title are on one line. Put the title on the line below.",
                   p.no, src, [(p.no, h["lines"][0].bbox_pt())])
 
 
@@ -714,21 +714,21 @@ def check_sections(pages, rules, F):
         p, l = s["page"], s["line"]
         ch = p.section["number"] if p.section and p.section["name"] == "CHAPTER" else None
         if ch is not None and s["chapter"] != ch:
-            F.add("fix", "Headings", f"Section {s['num']} sits in CHAPTER {ch}.", p.no, r["source"], [(p.no, l.bbox_pt())])
+            F.add("fix", "Headings", f"Section {s['num']} is in CHAPTER {ch}. Renumber it to start with {ch}.", p.no, r["source"], [(p.no, l.bbox_pt())])
         if abs(l.size - r["size_pt"]) > 0.3:
             bad_size.append(s)
         if s["level"] == 2 and abs(l.x0 - r["level1_x_cm"]) > r["tolerance_cm"]:
             bad_x.append(s)
     if bad_size:
-        F.add("fix", "Headings", f"{len(bad_size)} section headings are not {r['size_pt']:g} pt, on {pg([s['page'].no for s in bad_size])}.",
+        F.add("fix", "Headings", f"{len(bad_size)} section headings on {pg([s['page'].no for s in bad_size])} are not {r['size_pt']:g} pt. Set them to {r['size_pt']:g} pt bold.",
               bad_size[0]["page"].no, r["source"], [(s["page"].no, s["line"].bbox_pt()) for s in bad_size])
     if bad_x:
         common = Counter(round(s["line"].x0, 2) for s in bad_x).most_common(1)[0][0]
         ex = next(s for s in bad_x if round(s["line"].x0, 2) == common)
         two = all(len(s["num"].split(".")[-1]) > 1 for s in bad_x)
         which = "numbered 10 and up, such as" if two else "such as"
-        F.add("fix", "Headings", f"{len(bad_x)} section headings, {which} {ex['num']}, start {common:.2f} cm from the left edge while the template puts them at the "
-              f"{r['level1_x_cm']} cm margin. {pg([s['page'].no for s in bad_x], True)}.",
+        F.add("fix", "Headings", f"{len(bad_x)} section headings, {which} {ex['num']}, start {common:.2f} cm from the left edge on {pg([s['page'].no for s in bad_x])}. "
+              f"Line them up with the margin at {r['level1_x_cm']} cm.",
               ex["page"].no, r["source"], [(s["page"].no, s["line"].bbox_pt()) for s in bad_x])
     # numbering runs 1, 2, 3 within each chapter
     by_parent = defaultdict(list)
@@ -738,7 +738,7 @@ def check_sections(pages, rules, F):
     for parent, items in by_parent.items():
         for (a, sa), (b, sb) in zip(items, items[1:]):
             if b != a + 1:
-                F.add("fix", "Headings", f"Section {sb['num']} follows {sa['num']}.", sb["page"].no, r["source"], [(sb["page"].no, sb["line"].bbox_pt())])
+                F.add("fix", "Headings", f"Section {sb['num']} comes straight after {sa['num']}. Renumber the sections.", sb["page"].no, r["source"], [(sb["page"].no, sb["line"].bbox_pt())])
     return secs
 
 
@@ -802,12 +802,12 @@ def check_spacing_and_indent(pages, rules, F):
     if single:
         med = statistics.median(single.values())
         size = rules["sizes"]["body_pt"]
-        F.add("fix", "Line spacing", f"{pg(list(single), True)} {isare(list(single))} {spacing_name(med, size)} spaced ({r2(med)} cm from line to line) "
-              f"while the template uses {spacing_name(ls_rule['expected_cm'], size, noun=True)} ({ls_rule['expected_cm']} cm).", min(single), ls_rule["source"], pages=list(single))
+        F.add("fix", "Line spacing", f"{pg(list(single), True)} {isare(list(single))} {spacing_name(med, size)} spaced, {r2(med)} cm from line to line. "
+              f"Set the line spacing to {spacing_name(ls_rule['expected_cm'], size, noun=True)}.", min(single), ls_rule["source"], pages=list(single))
     for sec, ls in no_indent.items():
         if len(ls) >= 2 and len(ls) >= indented[sec]:
-            F.add("fix", "Paragraphs", f"{sec}: {len(ls)} paragraphs start at the margin while the template sets body text "
-                  f"{ind_rule['expected_cm']} cm in from the margin. {pg([l.page for l in ls], True)}.",
+            F.add("fix", "Paragraphs", f"{sec}: {len(ls)} paragraphs on {pg([l.page for l in ls])} start at the margin. "
+                  f"Indent body text {ind_rule['expected_cm']} cm from the margin.",
                   ls[0].page, ind_rule["source"], [(l.page, l.bbox_pt()) for l in ls][:60])
 
 
@@ -824,12 +824,12 @@ def check_placeholders(pages, rules, F):
     for rng, group in by_pages.items():
         words = ", ".join(f"\"{ph}\"" for ph, _ in group)
         items = [it for _, its in group for it in its]
-        F.add("fix", "Template text left in", f"Template text is still on {pg([n for n, _ in items])}: {words}.",
+        F.add("fix", "Template text", f"{pg([n for n, _ in items], True)} still {'has' if len({n for n, _ in items}) == 1 else 'have'} template text: {words}. Replace it with the real details.",
               min(n for n, _ in items), "Template placeholder text", [(n, l.bbox_pt()) for n, l in items])
     for typo, right in rules["template_typos"].items():
         found = [(p.no, l) for p in pages for l in p.lines if typo in l.text]
         if found:
-            F.add("fix", "Spelling", f"\"{typo}\" on {pg([n for n, _ in found])} is a typing error copied from the template and should read \"{right}\".",
+            F.add("fix", "Spelling", f"\"{typo}\" on {pg([n for n, _ in found])} is a typo copied from the template. Change it to \"{right}\".",
                   found[0][0], "The template itself carries this typing error", [(n, l.bbox_pt()) for n, l in found])
 
 
@@ -877,23 +877,23 @@ def check_titles(pages, rules, F):
             groups[keyed[k]].append(k)
         parts = [f"{join_and(ks).capitalize()}: \"{titles[ks[0]][0]}\"" for ks in groups.values()]
         boxes = [(v[1], l.bbox_pt()) for v in titles.values() for l in v[2]]
-        F.add("fix", "Title", f"The thesis title is not the same on every page. {'. '.join(parts)}.", None, "The same title appears on the cover, approval and abstract pages of the template", boxes)
+        F.add("fix", "Title", f"The title is different between pages. {'. '.join(parts)}. Use one title on every page.", None, "The same title appears on the cover, approval and abstract pages of the template", boxes)
     if "cover page" in titles:
         t, n, tl = titles["cover page"]
         if t != t.upper():
-            F.add("check", "Cover", f"The cover title is in mixed case while the template shows it in capitals.", n,
+            F.add("check", "Cover", f"The cover title is in mixed case and the template shows it in capitals.", n,
                   "Template PDF cover page", [(n, l.bbox_pt()) for l in tl])
         for l in tl:
             if abs(l.size - rules["sizes"]["cover_title_pt"]) > 0.3 or not l.bold:
-                F.add("fix", "Cover", f"The cover title is {l.size:g} pt{'' if l.bold else ' and not bold'} while the template uses "
-                      f"{rules['sizes']['cover_title_pt']} pt bold.", n, rules["sizes"]["source"], [(n, l.bbox_pt())])
+                F.add("fix", "Cover", f"The cover title is {l.size:g} pt{'' if l.bold else ' and not bold'}. "
+                      f"Set it to {rules['sizes']['cover_title_pt']:g} pt bold.", n, rules["sizes"]["source"], [(n, l.bbox_pt())])
                 break
     # the rest of the cover
     if by_i:
         rest = cover.lines[by_i[0]:]
         bad = [l for l in rest if abs(l.size - rules["sizes"]["cover_text_pt"]) > 0.3 or not l.bold]
         if bad:
-            F.add("fix", "Cover", f"{len(bad)} cover lines are not {rules['sizes']['cover_text_pt']} pt bold.", cover.no, rules["sizes"]["source"],
+            F.add("fix", "Cover", f"{len(bad)} cover lines are not {rules['sizes']['cover_text_pt']:g} pt bold. Set them to {rules['sizes']['cover_text_pt']:g} pt bold.", cover.no, rules["sizes"]["source"],
                   [(cover.no, l.bbox_pt()) for l in bad])
         import difflib
         have = [norm(l.text).upper() for l in rest]
@@ -906,10 +906,10 @@ def check_titles(pages, rules, F):
 
         for want in rules["cover_lines"]:
             if not present(want):
-                F.add("fix", "Cover", f"The cover is missing the line \"{want}\".", cover.no, "Template PDF cover page")
+                F.add("fix", "Cover", f"The cover has no \"{want}\" line. Add it.", cover.no, "Template PDF cover page")
         name = norm(rest[1].text) if len(rest) > 1 else ""
         if re.search(r"\b(M\.?D|Ph\.?D|MBA|M\.?Sc|B\.?Sc|RN|DMD)\b", name):
-            F.add("check", "Cover", f"The author line \"{name}\" carries degrees while the template shows the name only.", cover.no,
+            F.add("check", "Cover", f"The author line \"{name}\" includes degrees and the template shows the name only.", cover.no,
                   "Template PDF cover page", [(cover.no, rest[1].bbox_pt())])
 
 
@@ -922,19 +922,19 @@ def check_abstract_fields(pages, rules, F):
     flat = txt.replace(" ", "")
     for f in rules["abstract_fields"]:
         if f.replace(" ", "") not in flat:
-            F.add("fix", "Abstract", f"The abstract page is missing the \"{f}\" line.", abs_page.no, "Template PDF abstract page")
+            F.add("fix", "Abstract", f"The abstract page has no \"{f}\" line. Add it.", abs_page.no, "Template PDF abstract page")
     if rules.get("abstract_keywords", True) and not re.search(r"Keywords?\s*:", txt):
-        F.add("fix", "Abstract", "The abstract has no \"Keywords:\" line.", abs_page.no, "Template PDF abstract page")
+        F.add("fix", "Abstract", "The abstract has no \"Keywords:\" line. Add it below the abstract.", abs_page.no, "Template PDF abstract page")
     for p in pages_abs:
         for l in p.lines:
             if re.match(r"^Faculty of [a-z]", l.text):
                 fixed = re.sub(r"^Faculty of (\w)", lambda m: "Faculty of " + m.group(1).upper(), norm(l.text))
-                F.add("check", "Abstract", f"\"{norm(l.text)}\" should read \"{fixed}\".", p.no, "Spelling", [(p.no, l.bbox_pt())])
+                F.add("check", "Abstract", f"Change \"{norm(l.text)}\" to \"{fixed}\".", p.no, "Spelling", [(p.no, l.bbox_pt())])
     # academic year agrees with the cover
     cy = re.search(r"ACADEMIC YEAR\s+(\d{4})", pages[0].text)
     ay = re.search(r"Academic Year\s+(\d{4})", txt)
     if cy and ay and cy.group(1) != ay.group(1):
-        F.add("fix", "Abstract", f"Academic year is {ay.group(1)} on the abstract page and {cy.group(1)} on the cover.", abs_page.no, "Template PDF")
+        F.add("fix", "Abstract", f"The academic year is {ay.group(1)} on the abstract page and {cy.group(1)} on the cover. Use the same year on both.", abs_page.no, "Template PDF")
 
 
 def label_of(p):
@@ -957,12 +957,12 @@ def check_lists(pages, rules, F):
             continue
         no_title = [e for e in entries if not e[1]]
         if no_title:
-            msg = (f"All {len(entries)} entries in the {kind} show the {word.lower()} number with no title." if len(no_title) == len(entries)
-                   else f"{len(no_title)} of {len(entries)} entries in the {kind} show the {word.lower()} number with no title.")
+            msg = (f"The {kind} shows only the {word.lower()} numbers. Add the title of each {word.lower()}." if len(no_title) == len(entries)
+                   else f"{len(no_title)} of {len(entries)} entries in the {kind} have no title. Add the missing titles.")
             F.add("fix", "Lists", msg,
                   lp[0].no, "Template PDF lists show number, title and page", [(e[3].no, e[4].bbox_pt()) for e in no_title])
         if all("." not in e[0] for e in entries):
-            F.add("check", "Lists", f"{word}s are numbered 1, 2, 3 across the thesis while the template numbers them by chapter (4.1, 4.2).",
+            F.add("check", "Lists", f"{word}s are numbered 1, 2, 3 through the whole thesis and the template numbers them by chapter, such as 4.1 and 4.2.",
                   lp[0].no, "Template PDF lists")
         # where each caption really is
         caps = {}
@@ -975,10 +975,10 @@ def check_lists(pages, rules, F):
         for num, title, shown, p, l in entries:
             real = caps.get(num)
             if not real:
-                F.add("check", "Lists", f"{word} {num} is listed on page {shown} but no caption starting \"{word} {num}\" was found.", p.no,
+                F.add("check", "Lists", f"{word} {num} is listed on page {shown} and no caption starting \"{word} {num}\" was found.", p.no,
                       "Captions", [(p.no, l.bbox_pt())])
             elif label_of(real) and label_of(real) != shown:
-                F.add("fix", "Lists", f"{word} {num} is listed on page {shown} while its caption is on page {label_of(real)}.", p.no, "Captions",
+                F.add("fix", "Lists", f"{word} {num} is listed on page {shown} and its caption is on page {label_of(real)}. Update the page number in the list.", p.no, "Captions",
                       [(p.no, l.bbox_pt())])
 
 
@@ -1004,7 +1004,7 @@ def check_toc(pages, headings, secs, rules, F):
             else:
                 pending = (pending + " " + t).strip()
     if rules.get("toc_page_label", True) and not any(norm(l.text).upper() == "PAGE" for p in tp for l in p.lines):
-        F.add("check", "Table of contents", "The table of contents has no \"Page\" label above the numbers.", tp[0].no, "Template PDF table of contents")
+        F.add("check", "Table of contents", "The table of contents has no \"Page\" label above the page numbers.", tp[0].no, "Template PDF table of contents")
     where = {}
     for h in headings:
         key = heading_key(h)
@@ -1015,14 +1015,14 @@ def check_toc(pages, headings, secs, rules, F):
         where.setdefault(s["num"], s["page"])
     for text, shown, p, l in entries:
         if re.fullmatch(r"CHAPTER\s+\d+", text.upper()):
-            F.add("fix", "Table of contents", f"\"{text}\" is listed with no chapter title.", p.no, "Template PDF table of contents", [(p.no, l.bbox_pt())])
+            F.add("fix", "Table of contents", f"\"{text}\" is listed in the table of contents without a title. Add the title or remove the line.", p.no, "Template PDF table of contents", [(p.no, l.bbox_pt())])
     chap_x = [(l.x0, p, l, text) for text, shown, p, l in entries if text.upper().startswith("CHAPTER")]
     if chap_x:
         common = Counter(round(x, 1) for x, *_ in chap_x).most_common(1)[0][0]
         odd = [(p, l, t) for x, p, l, t in chap_x if abs(x - common) > 0.3]
         if odd:
             F.add("check", "Table of contents", join_and([f"\"{t}\"" for _, _, t in odd]) + (" is" if len(odd) == 1 else " are")
-                  + " not lined up with the other chapter lines in the table of contents.", odd[0][0].no, "Template PDF table of contents", [(p.no, l.bbox_pt()) for p, l, _ in odd])
+                  + " indented differently from the other chapter lines in the table of contents.", odd[0][0].no, "Template PDF table of contents", [(p.no, l.bbox_pt()) for p, l, _ in odd])
     for text, shown, p, l in entries:
         up = text.upper()
         m = re.match(r"^(\d+(?:\.\d+)+)\s", text)
@@ -1039,7 +1039,7 @@ def check_toc(pages, headings, secs, rules, F):
             continue
         real = label_of(target)
         if real and real.replace(" ", "") != shown.replace(" ", ""):
-            F.add("fix", "Table of contents", f"\"{text}\" is listed on page {shown} while it starts on page {real}.", p.no, "Page numbers",
+            F.add("fix", "Table of contents", f"\"{text}\" is listed on page {shown} and starts on page {real}. Update the table of contents.", p.no, "Page numbers",
                   [(p.no, l.bbox_pt())])
 
 
@@ -1049,12 +1049,12 @@ def check_back(pages, rules, F):
         txt = norm(" ".join(p.text for p in bio))
         for f in rules["biography_fields"]:
             if not all(w in txt.split() for w in f.split()):
-                F.add("fix", "Biography", f"The biography is missing the \"{f}\" line.", bio[0].no, "Template PDF biography page")
+                F.add("fix", "Biography", f"The biography has no \"{f}\" line. Add it.", bio[0].no, "Template PDF biography page")
     ack = [p for p in pages if p.section and p.section["name"] == "ACKNOWLEDGEMENTS"]
     if ack and rules.get("acknowledgements_signed", True):
         last = ack[-1].lines[-1] if ack[-1].lines else None
         if last and last.x0 < ack[-1].width / 2:
-            F.add("check", "Acknowledgements", "The acknowledgements do not end with the author's name on the right.", ack[-1].no, "Template PDF acknowledgements page")
+            F.add("check", "Acknowledgements", "The acknowledgements do not end with the author's name on the right. Add the name there.", ack[-1].no, "Template PDF acknowledgements page")
 
 
 # ---------------------------------------------------------------- output
@@ -1071,7 +1071,7 @@ def write_report(path, src_name, pages, findings, rules):
     for i, f in enumerate(items, 1):
         pg = f"{f['page']}" + (f" <span class=lab>({html.escape(shown.get(f['page'], ''))})</span>" if f["page"] else "") if f["page"] else "Whole file"
         rows.append(f"<tr class={f['level']}><td>{i}</td><td><b>{LEVEL_NAME[f['level']]}</b></td><td>{html.escape(f['area'])}</td>"
-                    f"<td>{pg}</td><td>{html.escape(f['message'])}<div class=src>{html.escape(f['source'] or '')}</div></td></tr>")
+                    f"<td>{pg}</td><td>{html.escape(f['message'])}" + (f"<div class=src>{html.escape(f['source'] or '')}</div>" if f["level"] == "check" else "") + "</td></tr>")
     doc = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>{html.escape(src_name)} format report</title>
 <style>
@@ -1089,8 +1089,8 @@ p.note{{color:#444;max-width:820px}}
 <h1>{html.escape(src_name)}</h1>
 <div class=meta>Checked against {html.escape(rules['name'])}. {len(pages)} pages.</div>
 <div class=sum><div><b>{n_fix}</b>to fix</div><div><b>{n_check}</b>to check</div></div>
-<p class=note>Fix means the manuscript differs from the template. Check means the template does not settle it and the graduate office decides.
-Page is the PDF page, with the number printed on that page in brackets. The corrections PDF shows each page with every problem boxed and numbered to match this list.</p>
+<p class=note>Fix items differ from the template and need changing. Check items are ones the template does not settle, so the graduate office decides.
+Page is the page in the PDF file, with the number printed on that page in brackets. The marked pages file boxes each problem with the same number.</p>
 <table><tr><th>#</th><th></th><th>Area</th><th>Page</th><th>Problem</th></tr>
 {''.join(rows)}
 </table></body></html>"""
@@ -1130,7 +1130,7 @@ def write_corrections_pdf(src_pdf, out_pdf, src_name, pages, findings, rules):
         pg_txt = f"{f['page']} <font size=8 color='#666666'>({esc(shown.get(f['page'], ''))})</font>" if f["page"] else "Whole file"
         rows.append([Paragraph(str(f["n"]), base), Paragraph(f"<font color='{col}'><b>{LEVEL_NAME[f['level']]}</b></font>", base),
                      Paragraph(esc(f["area"]), base), Paragraph(pg_txt, base),
-                     [Paragraph(esc(f["message"]), base), Paragraph(esc(f["source"] or ""), small)]])
+                     [Paragraph(esc(f["message"]), base)] + ([Paragraph(esc(f["source"] or ""), small)] if f["level"] == "check" else [])])
     tbl = Table(rows, colWidths=[0.9 * CM, 1.4 * CM, 3.6 * CM, 2.2 * CM, 19.6 * CM], repeatRows=1)
     tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, 0), 1, colors.black),
                              ("LINEBELOW", (0, 1), (-1, -1), 0.3, colors.Color(0.8, 0.8, 0.8)),
@@ -1138,8 +1138,8 @@ def write_corrections_pdf(src_pdf, out_pdf, src_name, pages, findings, rules):
     story = [Paragraph(esc(src_name), title), Spacer(1, 4),
              Paragraph(f"Checked against {esc(rules['name'])}. {len(pages)} pages. <b>{n_fix} to fix, {len(items) - n_fix} to check.</b>", base),
              Spacer(1, 4),
-             Paragraph("Fix means the manuscript differs from the template. Check means the template does not settle it and the graduate office decides. "
-                       "Page is the PDF page, with the number printed on that page in brackets. The sheets after this list show each page with its problems boxed and numbered.", base),
+             Paragraph("Fix items differ from the template and need changing. Check items are ones the template does not settle, so the graduate office decides. "
+                       "Page is the page in the PDF file, with the number printed on that page in brackets. The pages after this list show each problem boxed with the same number.", base),
              Spacer(1, 10), tbl]
     summary = io.BytesIO()
     SimpleDocTemplate(summary, pagesize=(W, H), leftMargin=1.2 * CM, rightMargin=1.2 * CM, topMargin=1.2 * CM, bottomMargin=1.2 * CM,
@@ -1359,7 +1359,7 @@ def run_word(kind, src, out, timeout=WORD_TIMEOUT):
                 raise Cancelled()
             raise ConversionError(f"Word stopped responding while opening {name} and was closed after {timeout // 60} minutes. "
                                   "Open the file in Word, close any message it shows, save it, and check it again. "
-                                  "Saving it as PDF from Word and checking the PDF also works.")
+                                  "Or save it as PDF from Word and check the PDF.")
         time.sleep(0.5)
     if proc.returncode != 0 or not os.path.exists(out):
         detail = ""
@@ -1454,8 +1454,8 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
         tmp = tempfile.mkdtemp()
         pdf_path, converter = docx_to_pdf(path, tmp)
         if converter != "Microsoft Word":
-            F.add("check", "Word file", f"{src_name} was laid out by {converter} because Microsoft Word was not found. {converter} can move page breaks "
-                  "and swap fonts, so page numbers and fonts in this report may differ from Word. Check the PDF the student saved from Word instead.",
+            F.add("check", "Word file", f"{src_name} was opened with {converter} because Microsoft Word is not on this computer. {converter} can move page breaks "
+                  "and change fonts. Page numbers and fonts here may not match Word. Check the PDF saved from Word if the student sent one.",
                   None, "Conversion")
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -1486,7 +1486,7 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
 
     base = os.path.splitext(src_name)[0]
     report = os.path.join(outdir, f"{base} - format report.html")
-    marked = os.path.join(outdir, f"{base} - corrections.pdf")
+    marked = os.path.join(outdir, f"{base} - marked pages.pdf")
     write_report(report, src_name, pages, F, rules)
     write_corrections_pdf(pdf_path, marked, src_name, pages, F, rules)
     if tmp:

@@ -474,7 +474,7 @@ class Fixer:
                     tbl.addprevious(sub)
                     tbl.addprevious(lst)
                     tbl.getparent().remove(tbl)
-                    self.note(f"Rebuilt the {name} from the {caps[word[:-1]]} {word.lower()[:-1]} captions, so it lists each title and Word keeps its page numbers current.")
+                    self.note(f"Rebuilt the {name} from the {caps[word[:-1]]} {word.lower()[:-1]} captions. It lists each title now and Word keeps the page numbers up to date.")
         # front headings: bookmarked, kept out of the table of contents field, listed with (n) page numbers instead
         front = []
         for p in self.body_items():
@@ -614,7 +614,7 @@ class Fixer:
                 write_ind(p, ind)
                 changed += 1
         if changed:
-            self.note(f"Moved {changed} section headings (such as 2.10 and up, and all of Chapter 5) so the number starts at the margin.")
+            self.note(f"Moved {changed} section headings so the number starts at the margin.")
 
     # 3b. each chapter's section numbers come from its own list, starting at n.1
     def fix_section_numbering(self):
@@ -900,9 +900,10 @@ class Fixer:
                     f.set(W + "ascii", self.font)
                     f.set(W + "hAnsi", self.font)
                     fonts += 1
-        self.note(f"Set {resized} runs of body text to {self.body_hp / 2:g} pt.")
+        if resized:
+            self.note(f"Set body text to {self.body_hp / 2:g} pt in {resized} {'place' if resized == 1 else 'places'}.")
         if fonts:
-            self.note(f"Changed {fonts} runs and heading numbers in other fonts to {self.font}.")
+            self.note(f"Changed text in other fonts to {self.font} in {fonts} {'place' if fonts == 1 else 'places'}, heading numbers included.")
 
     # 8. page numbers: (1), (2), (3) on the front pages, 1, 2, 3 after, at the top right
     def fix_page_numbers(self):
@@ -1134,7 +1135,7 @@ def replace_text(p, text):
 
 
 NOT_FIXED = [
-    "Apart from the corrections above the wording is left alone, so a title that differs between pages and template text still to be filled in stay as they are.",
+    "The wording is not changed. A title that differs between pages and leftover template text still need fixing by hand.",
     "Open the fixed file in Word, answer Yes when it asks to update fields, then save it as PDF and check the PDF.",
     "Anything marked Check in the report is for the graduate office to decide.",
 ]
@@ -1155,6 +1156,7 @@ def fix(path, rules_path=DEFAULT_RULES, outdir=None, check_after=True):
         path = newer
     elif not path.lower().endswith(".docx"):
         raise check.ConversionError("The corrected copy needs the Word file (.docx or .doc).")
+    os.makedirs(outdir, exist_ok=True)
     out = os.path.join(outdir, f"{base} - fixed.docx")
     f = Fixer(path, rules)
     f.run()
