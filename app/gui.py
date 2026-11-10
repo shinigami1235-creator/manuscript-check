@@ -127,6 +127,11 @@ class Api:
         self._batch.start()
         return self.state()
 
+    def stop(self):
+        if self._batch and self._batch.running:
+            self._batch.stop()
+        return self.state()
+
     def recheck_all(self):
         for i in self._items:
             i.reset()
@@ -271,6 +276,16 @@ def uitest(out):
 
 
 def main(shell=1, code_dir=None):
+    if len(sys.argv) >= 5 and sys.argv[1] == "--word":
+        kind, src, out = sys.argv[2:5]
+        try:
+            check.word_job(kind, src, out)
+            sys.exit(0)
+        except Exception:
+            import traceback
+            with open(out + ".err", "w", encoding="utf-8") as fh:
+                fh.write(traceback.format_exc())
+            sys.exit(2)
     if len(sys.argv) >= 3 and sys.argv[1] == "--uitest":
         sys.exit(uitest(sys.argv[2]))
     if len(sys.argv) >= 3 and sys.argv[1] in ("--updatetest", "--whichversion"):

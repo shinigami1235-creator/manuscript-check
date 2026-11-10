@@ -19,6 +19,8 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from collections import Counter, defaultdict
 
 import logging
@@ -1251,58 +1253,121 @@ def write_corrections_pdf(src_pdf, out_pdf, src_name, pages, findings, rules):
 
 # ---------------------------------------------------------------- Word files
 
-class WordSession:
-    """One copy of Microsoft Word kept open for a whole batch, since starting Word takes several seconds."""
-    current = None
+WORD_TIMEOUT = 240          # seconds Word gets for one file before it is shut down
+CANCEL = threading.Event()  # set by the Stop button
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0   # keep helper programs from flashing a console
 
-    def __init__(self):
-        import pythoncom
-        import win32com.client  # pywin32
-        pythoncom.CoInitialize()
-        self.app = win32com.client.DispatchEx("Word.Application")
-        self.app.Visible = False
-        self.app.DisplayAlerts = 0
 
-    def to_pdf(self, path, out):
-        doc = self.app.Documents.Open(os.path.abspath(path), ReadOnly=True, AddToRecentFiles=False, ConfirmConversions=False)
+class Cancelled(Exception):
+    pass
+
+
+def word_job(kind, src, out):
+    """Runs in its own process: Word opens src and saves it as PDF (kind "pdf") or .docx (kind "docx").
+    Macros, link updates and spelling are switched off so nothing can stop Word with a hidden question."""
+    import pythoncom
+    import win32com.client
+    pythoncom.CoInitialize()
+    app = win32com.client.DispatchEx("Word.Application")
+    try:
+        app.Visible = False
+        app.DisplayAlerts = 0
+        for setting, value in (("AutomationSecurity", 3),):          # 3 = macros off
+            try:
+                setattr(app, setting, value)
+            except Exception:
+                pass
+        for option, value in (("ConfirmConversions", False), ("UpdateLinksAtOpen", False), ("CheckSpellingAsYouType", False),
+                              ("CheckGrammarAsYouType", False), ("UpdateFieldsAtPrint", False), ("UpdateLinksAtPrint", False),
+                              ("Pagination", True)):
+            try:
+                setattr(app.Options, option, value)
+            except Exception:
+                pass
+        doc = app.Documents.Open(FileName=os.path.abspath(src), ConfirmConversions=False, ReadOnly=True, AddToRecentFiles=False,
+                                 Revert=False, Visible=False, OpenAndRepair=False, NoEncodingDialog=True)
         try:
-            for _ in range(2):
-                for toc in doc.TablesOfContents:
-                    toc.Update()
-                for tof in doc.TablesOfFigures:
-                    tof.Update()
-                doc.Fields.Update()
-            doc.ExportAsFixedFormat(os.path.abspath(out), 17)  # 17 = PDF
+            if kind == "pdf":
+                try:  # show the final text, without tracked changes or comment balloons
+                    view = doc.ActiveWindow.View
+                    view.RevisionsFilter.Markup = 0
+                    view.RevisionsFilter.View = 0
+                    view.ShowRevisionsAndComments = False
+                except Exception:
+                    pass
+                for _ in range(2):  # only the contents and lists are refreshed, never fields that call other programs
+                    for toc in doc.TablesOfContents:
+                        toc.Update()
+                    for tof in doc.TablesOfFigures:
+                        tof.Update()
+                doc.ExportAsFixedFormat(OutputFileName=os.path.abspath(out), ExportFormat=17, OpenAfterExport=False,
+                                        OptimizeFor=0, Range=0, Item=0, IncludeDocProps=False, CreateBookmarks=0)
+            else:
+                doc.SaveAs2(os.path.abspath(out), 16)
         finally:
-            doc.Close(False)
-
-    def to_docx(self, path, out):
-        doc = self.app.Documents.Open(os.path.abspath(path), ReadOnly=True, AddToRecentFiles=False, ConfirmConversions=False)
+            doc.Close(0)
+    finally:
         try:
-            doc.SaveAs2(os.path.abspath(out), 16)  # 16 = .docx
-        finally:
-            doc.Close(False)
-
-    def quit(self):
-        try:
-            self.app.Quit()
+            app.Quit(0)
         except Exception:
             pass
 
-    @classmethod
-    def start(cls):
-        if cls.current is None:
-            try:
-                cls.current = cls()
-            except Exception:
-                cls.current = None
-        return cls.current
 
-    @classmethod
-    def stop(cls):
-        if cls.current is not None:
-            cls.current.quit()
-            cls.current = None
+def self_command():
+    """How to start this program again, for running Word in a separate process."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, os.path.join(os.path.dirname(HERE), "launcher.py")]
+
+
+def word_pids():
+    if os.name != "nt":
+        return set()
+    try:
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq WINWORD.EXE", "/FO", "CSV", "/NH"], capture_output=True, text=True,
+                             timeout=20, creationflags=NO_WINDOW).stdout
+    except Exception:
+        return set()
+    pids = set()
+    for line in out.splitlines():
+        parts = [x.strip('"') for x in line.split('","')]
+        if len(parts) > 1 and parts[1].isdigit():
+            pids.add(int(parts[1]))
+    return pids
+
+
+def kill_pids(pids):
+    for pid in pids:
+        try:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=20, creationflags=NO_WINDOW)
+        except Exception:
+            pass
+
+
+def run_word(kind, src, out, timeout=WORD_TIMEOUT):
+    """Has Word convert one file in a separate process, which is shut down if it hangs or Stop is pressed."""
+    name = os.path.basename(src)
+    before = word_pids()
+    err = out + ".err"
+    proc = subprocess.Popen(self_command() + ["--word", kind, src, out], creationflags=NO_WINDOW)
+    started = time.time()
+    while proc.poll() is None:
+        if CANCEL.is_set() or time.time() - started > timeout:
+            proc.kill()
+            kill_pids(word_pids() - before)
+            if CANCEL.is_set():
+                raise Cancelled()
+            raise ConversionError(f"Word stopped responding while opening {name} and was closed after {timeout // 60} minutes. "
+                                  "Open the file in Word, close any message it shows, save it, and check it again. "
+                                  "Saving it as PDF from Word and checking the PDF also works.")
+        time.sleep(0.5)
+    if proc.returncode != 0 or not os.path.exists(out):
+        detail = ""
+        if os.path.exists(err):
+            with open(err, encoding="utf-8", errors="replace") as fh:
+                lines = fh.read().strip().splitlines()
+            detail = lines[-1][:200] if lines else ""
+        raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Save it as PDF from Word and check the PDF.")
 
 
 def word_available():
@@ -1313,19 +1378,6 @@ def word_available():
         return True
     except Exception:
         return False
-
-
-def word_com_to_pdf(path, out):
-    """Microsoft Word on Windows: refresh the table of contents and lists, then save as PDF."""
-    session = WordSession.current
-    if session is not None:
-        session.to_pdf(path, out)
-        return
-    session = WordSession()
-    try:
-        session.to_pdf(path, out)
-    finally:
-        session.quit()
 
 
 def find_soffice():
@@ -1340,19 +1392,9 @@ def docx_to_pdf(path, outdir):
     """Lay the Word file out as a PDF. Microsoft Word gives the same pages the student sees.
     LibreOffice is the fallback and can move page breaks or swap fonts."""
     out = os.path.join(outdir, os.path.splitext(os.path.basename(path))[0] + ".pdf")
-    try:
-        word_com_to_pdf(path, out)
-        if os.path.exists(out):
-            return out, "Microsoft Word"
-    except Exception:
-        pass
-    try:
-        from docx2pdf import convert  # Microsoft Word on Windows and macOS, without refreshing fields
-        convert(os.path.abspath(path), out)
-        if os.path.exists(out):
-            return out, "Microsoft Word"
-    except Exception:
-        pass
+    if os.name == "nt" and word_available():
+        run_word("pdf", path, out)
+        return out, "Microsoft Word"
     soffice = find_soffice()
     if soffice:
         # LibreOffice's own python can refresh the table of contents before saving

@@ -121,6 +121,7 @@
   <div class="go">
     <button id="clear">Clear list</button>
     <button id="summary" class="hidden">Save summary for Excel</button>
+    <button id="stop" class="hidden">Stop</button>
     <button id="start" class="primary" disabled>Check</button>
   </div>
 </footer>
@@ -148,10 +149,17 @@ let timer = null;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
+function clock(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
 function resultCell(i) {
   if (i.status === "waiting") return '<span style="color:var(--muted)">Waiting</span>';
-  if (i.status === "checking") return '<span class="working">Checking</span><div class="bar"><i></i></div>';
-  if (i.status === "fixing") return '<span class="working">Making the corrected copy</span><div class="bar"><i></i></div>';
+  const took = i.started ? ` ${clock(Date.now() / 1000 - i.started)}` : "";
+  if (i.status === "checking") return `<span class="working">Checking${took}</span><div class="bar"><i></i></div>`;
+  if (i.status === "fixing") return `<span class="working">Making the corrected copy${took}</span><div class="bar"><i></i></div>`;
+  if (i.status === "stopped") return '<span style="color:var(--muted)">Stopped</span>';
   if (i.status === "failed") return `<span class="failed">${esc(i.message)}</span>`;
   if (!i.fix_count && !i.check_count) return '<span class="clean">Matches the template</span>';
   const parts = [];
@@ -193,6 +201,7 @@ function render(state) {
   const todo = items.filter(i => i.status !== "done").length;
   const done = items.filter(i => i.status === "done" || i.status === "failed").length;
   const start = $("start");
+  $("stop").classList.toggle("hidden", !S.running);
   if (S.running) { start.textContent = "Checking"; start.disabled = true; }
   else if (todo) { start.textContent = `Check ${todo} ${todo === 1 ? "file" : "files"}`; start.disabled = false; }
   else { start.textContent = items.length ? "All checked" : "Check"; start.disabled = true; }
@@ -202,6 +211,7 @@ function render(state) {
 
   if (S.running && !timer) timer = setInterval(async () => render(await api.state()), 700);
   if (!S.running && timer) { clearInterval(timer); timer = null; }
+  if (!S.running) { $("stop").disabled = false; $("stop").textContent = "Stop"; }
 }
 window.refresh = render;
 
@@ -217,6 +227,7 @@ function wire() {
   $("addFolder").onclick = async () => render(await api.add_folder());
   $("start").onclick = async () => render(await api.start());
   $("clear").onclick = async () => render(await api.clear());
+  $("stop").onclick = async () => { $("stop").disabled = true; $("stop").textContent = "Stopping"; render(await api.stop()); };
   $("summary").onclick = () => api.save_summary();
   $("format").onchange = async (e) => render(await api.set_format(e.target.value));
   $("makeFixed").onchange = async (e) => render(await api.set_make_fixed(e.target.checked));

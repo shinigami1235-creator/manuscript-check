@@ -90,6 +90,19 @@ jobs:
           Get-Content (Join-Path $out "uitest.log")
           if ($p.ExitCode -ne 0) { throw "Window test failed" }
 
+      - name: Start the Word helper
+        # GitHub's machines have no Word, so the helper must start, fail cleanly and leave a readable note
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Manuscript Check\Manuscript Check.exe"
+          $doc = Join-Path $PWD "tests\sample-thesis.docx"
+          $pdf = Join-Path $PWD "wordtest.pdf"
+          $p = Start-Process -FilePath $exe -ArgumentList @("--word", "pdf", "`"$doc`"", "`"$pdf`"") -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "The Word helper hung" }
+          "Exit code $($p.ExitCode)"
+          Get-Content "$pdf.err" | Select-Object -Last 3
+          if ($p.ExitCode -ne 2 -or -not (Test-Path "$pdf.err")) { throw "The Word helper did not report its failure" }
+
       - name: Fetch the WebView2 installer
         shell: pwsh
         run: Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile packaging/MicrosoftEdgeWebview2Setup.exe

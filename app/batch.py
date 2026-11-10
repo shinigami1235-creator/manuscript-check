@@ -4,6 +4,7 @@ import json
 import os
 import re
 import threading
+import time
 import traceback
 
 import check
@@ -70,14 +71,15 @@ class Item:
         self.reset()
 
     def reset(self):
-        self.status = "waiting"      # waiting, checking, fixing, done, failed
+        self.status = "waiting"      # waiting, checking, fixing, done, failed, stopped
+        self.started = None
         self.message = ""
         self.fix_count = self.check_count = self.pages = None
         self.report = self.corrections = self.fixed = self.changes = None
         self.findings = []
 
     def to_dict(self):
-        return {k: getattr(self, k) for k in ("id", "path", "name", "kind", "status", "message", "fix_count", "check_count", "pages",
+        return {k: getattr(self, k) for k in ("id", "path", "name", "kind", "status", "message", "started", "fix_count", "check_count", "pages",
                                                "report", "corrections", "fixed", "changes")}
 
 
@@ -105,18 +107,21 @@ class Batch:
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H.%M")
         self.folder = os.path.join(self.results_root, f"Checked {stamp}")
         os.makedirs(self.folder, exist_ok=True)
-        uses_word = any(i.kind == "Word" for i in self.items)
-        if uses_word and os.name == "nt":
-            check.WordSession.start()
+        check.CANCEL.clear()
         try:
             for item in self.items:
                 if item.status == "done":
                     continue
+                if check.CANCEL.is_set():
+                    item.status = "stopped"
+                    continue
                 self.run_one(item)
         finally:
-            check.WordSession.stop()
             self.running = False
             self.done = True
+
+    def stop(self):
+        check.CANCEL.set()
 
     def run_one(self, item):
         item.reset()
@@ -129,6 +134,7 @@ class Batch:
         os.makedirs(outdir)
         try:
             item.status = "checking"
+            item.started = time.time()
             report, corrections, F, pages, _ = check.run(item.path, self.rules_path, outdir)
             item.report, item.corrections = report, corrections
             item.pages = len(pages)
@@ -141,6 +147,8 @@ class Batch:
                 fixed, changes, _, _ = fix.fix(item.path, self.rules_path, outdir, check_after=False)
                 item.fixed, item.changes = fixed, changes
             item.status = "done"
+        except check.Cancelled:
+            item.status, item.started = "stopped", None
         except check.ConversionError as e:
             item.status, item.message = "failed", str(e)
         except Exception as e:

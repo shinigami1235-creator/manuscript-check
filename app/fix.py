@@ -1147,12 +1147,11 @@ def fix(path, rules_path=DEFAULT_RULES, outdir=None, check_after=True):
     base = os.path.splitext(os.path.basename(path))[0]
     if path.lower().endswith(".doc"):
         # an old Word file is saved as .docx by Word first
-        session = check.WordSession.current or check.WordSession.start()
-        if session is None:
+        if not (os.name == "nt" and check.word_available()):
             raise check.ConversionError(f"{os.path.basename(path)} is an old Word file and Microsoft Word was not found to open it.")
         import tempfile
         newer = os.path.join(tempfile.mkdtemp(), base + ".docx")
-        session.to_docx(path, newer)
+        check.run_word("docx", path, newer)
         path = newer
     elif not path.lower().endswith(".docx"):
         raise check.ConversionError("The corrected copy needs the Word file (.docx or .doc).")
