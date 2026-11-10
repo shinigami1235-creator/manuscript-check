@@ -1404,6 +1404,7 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
     BACK = list(dict.fromkeys(DEFAULT_BACK + [h.upper() for h in rules.get("back_headings", [])]))
     src_name = os.path.basename(path)
     outdir = outdir or os.path.dirname(os.path.abspath(path))
+    os.makedirs(outdir, exist_ok=True)
     tmp = None
     pdf_path = path
     F = Findings()
