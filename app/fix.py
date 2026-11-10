@@ -29,6 +29,16 @@ R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 WP_NS = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 W = "{%s}" % W_NS
+
+
+def whole(v, default=0):
+    """A whole number from a Word setting. Files converted from PDF write some as 400.0."""
+    if v is None:
+        return default
+    try:
+        return int(round(float(v)))
+    except ValueError:
+        return default
 R = "{%s}" % R_NS
 NS = {"w": W_NS, "r": R_NS, "wp": WP_NS, "a": A_NS}
 
@@ -151,7 +161,7 @@ class Docx:
         base = s.find(W + "basedOn")
         out = self.style_ind(base.get(W + "val"), depth + 1) if base is not None else {}
         if ind is not None:
-            out.update({etree.QName(k).localname: int(v) for k, v in ind.attrib.items() if v.lstrip("-").isdigit()})
+            out.update({etree.QName(k).localname: whole(v) for k, v in ind.attrib.items() if re.fullmatch(r"-?\d+(\.\d+)?", v)})
         return out
 
     def num_ind(self, num_id, ilvl):
@@ -178,7 +188,7 @@ class Docx:
         ind = lvl.find(f"{W}pPr/{W}ind")
         if ind is None:
             return {}
-        return {etree.QName(k).localname: int(v) for k, v in ind.attrib.items() if v.lstrip("-").isdigit()}
+        return {etree.QName(k).localname: whole(v) for k, v in ind.attrib.items() if re.fullmatch(r"-?\d+(\.\d+)?", v)}
 
     def eff_ind(self, p):
         ppr = p.find(W + "pPr")
@@ -189,7 +199,7 @@ class Docx:
             out.update(self.num_ind(*num))
         ind = ppr.find(W + "ind") if ppr is not None else None
         if ind is not None:
-            out.update({etree.QName(k).localname: int(v) for k, v in ind.attrib.items() if v.lstrip("-").isdigit()})
+            out.update({etree.QName(k).localname: whole(v) for k, v in ind.attrib.items() if re.fullmatch(r"-?\d+(\.\d+)?", v)})
         out.setdefault("left", out.get("start", 0))
         out.setdefault("right", out.get("end", 0))
         return out
@@ -543,8 +553,8 @@ class Fixer:
     def text_width(self):
         for sp, _ in self.sections():
             pgsz = sp.find(W + "pgSz")
-            if pgsz is not None and int(pgsz.get(W + "w", 0)) < int(pgsz.get(W + "h", 1)):
-                return int(pgsz.get(W + "w")) - self.left_tw - self.right_tw
+            if pgsz is not None and whole(pgsz.get(W + "w", 0)) < whole(pgsz.get(W + "h", 1)):
+                return whole(pgsz.get(W + "w")) - self.left_tw - self.right_tw
         return 8470
 
     def ensure_style(self, sid, name, based, outline=None):
@@ -636,7 +646,7 @@ class Fixer:
         seen = {}
         fixed = []
         nums = self.d.numbering
-        next_id = max([int(n.get(W + "numId")) for n in nums.findall(W + "num")] + [0]) + 1
+        next_id = max([whole(n.get(W + "numId")) for n in nums.findall(W + "num")] + [0]) + 1
         for chap, ps in chapters:
             heads = [p for p in ps if style_of(p) == "Heading3"]
             ids = {numpr(p)[0] for p in heads}
@@ -647,7 +657,7 @@ class Fixer:
                     absn = next(a for a in nums.findall(W + "abstractNum") if a.get(W + "abstractNumId") == abs_id)
                     # a copy of the list definition with its own identity, so Word and LibreOffice both restart it
                     copy_abs = copy.deepcopy(absn)
-                    new_abs = max(int(a.get(W + "abstractNumId")) for a in nums.findall(W + "abstractNum")) + 1
+                    new_abs = max(whole(a.get(W + "abstractNumId")) for a in nums.findall(W + "abstractNum")) + 1
                     copy_abs.set(W + "abstractNumId", str(new_abs))
                     nsid = copy_abs.find(W + "nsid")
                     if nsid is not None:
@@ -682,25 +692,25 @@ class Fixer:
             pgmar = sp.find(W + "pgMar")
             if pgmar is None or pgsz is None:
                 continue
-            landscape = pgsz.get(W + "orient") == "landscape" or int(pgsz.get(W + "w", 0)) > int(pgsz.get(W + "h", 0))
+            landscape = pgsz.get(W + "orient") == "landscape" or whole(pgsz.get(W + "w", 0)) > whole(pgsz.get(W + "h", 0))
             if landscape:
                 continue
-            pg_w = int(pgsz.get(W + "w"))
-            old_left = int(pgmar.get(W + "left", 0))
+            pg_w = whole(pgsz.get(W + "w"))
+            old_left = whole(pgmar.get(W + "left", 0))
             delta = self.left_tw - old_left
             touched = False
             if old_left != self.left_tw:
                 pgmar.set(W + "left", str(self.left_tw))
                 touched = True
-            if int(pgmar.get(W + "right", 0)) < self.right_tw:
+            if whole(pgmar.get(W + "right", 0)) < self.right_tw:
                 pgmar.set(W + "right", str(self.right_tw))
                 touched = True
             title_pages = first_front is not None and si < first_front
-            if int(pgmar.get(W + "bottom", 0)) < self.bottom_tw and not title_pages:
+            if whole(pgmar.get(W + "bottom", 0)) < self.bottom_tw and not title_pages:
                 pgmar.set(W + "bottom", str(self.bottom_tw))
                 touched = True
             changed_sections += touched
-            text_w = pg_w - self.left_tw - int(pgmar.get(W + "right"))
+            text_w = pg_w - self.left_tw - whole(pgmar.get(W + "right"))
             for e in elems:
                 kind = etree.QName(e).localname
                 paras = [e] if kind == "p" else (list(e.iter(W + "p")) if kind == "sdt" else [])
@@ -725,7 +735,7 @@ class Fixer:
         if self.d.styles is not None and pg_w:
             text_w = pg_w - self.left_tw - self.right_tw
             for tab in self.d.styles.iter(W + "tab"):
-                if tab.get(W + "pos") and int(tab.get(W + "pos")) > text_w:
+                if tab.get(W + "pos") and whole(tab.get(W + "pos")) > text_w:
                     tab.set(W + "pos", str(text_w))
         self.note(f"Set the left margin to {self.rules['margins']['left_text_cm']} cm, the right margin to at least {self.rules['margins']['right_cm']} cm "
                   f"and the bottom margin to at least {self.rules['margins']['bottom_cm']} cm in {changed_sections} sections, and shifted "
@@ -735,7 +745,7 @@ class Fixer:
         ind = self.d.eff_ind(p)
         limit = text_w - max(0, ind.get("left", 0)) - max(0, ind.get("right", 0)) + max(0, ind.get("left", 0))
         for tab in p.iter(W + "tab"):
-            if tab.getparent().tag == W + "tabs" and tab.get(W + "pos") and int(tab.get(W + "pos")) > limit:
+            if tab.getparent().tag == W + "tabs" and tab.get(W + "pos") and whole(tab.get(W + "pos")) > limit:
                 tab.set(W + "pos", str(limit))
                 self.tabs_moved = getattr(self, "tabs_moved", 0) + 1
 
@@ -744,15 +754,15 @@ class Fixer:
         avail = (text_w - max(0, ind.get("left", 0)) - max(0, ind.get("right", 0))) * EMU_PER_TWIP
         for inl in list(p.iter("{%s}inline" % WP_NS)) + list(p.iter("{%s}anchor" % WP_NS)):
             ext = inl.find("{%s}extent" % WP_NS)
-            cx, cy = int(ext.get("cx")), int(ext.get("cy"))
+            cx, cy = whole(ext.get("cx")), whole(ext.get("cy"))
             if cx > avail:
                 k = avail / cx
                 ext.set("cx", str(int(cx * k)))
                 ext.set("cy", str(int(cy * k)))
                 for a in inl.iter("{%s}ext" % A_NS):
                     if a.get("cx"):
-                        a.set("cx", str(int(int(a.get("cx")) * k)))
-                        a.set("cy", str(int(int(a.get("cy")) * k)))
+                        a.set("cx", str(int(whole(a.get("cx")) * k)))
+                        a.set("cy", str(int(whole(a.get("cy")) * k)))
                 self.images_scaled = getattr(self, "images_scaled", 0) + 1
 
     def fit_table(self, tbl, delta, text_w):
@@ -761,20 +771,20 @@ class Fixer:
         if tpr is None or grid is None:
             return
         ind_el = tpr.find(W + "tblInd")
-        ind = int(ind_el.get(W + "w", 0)) if ind_el is not None and ind_el.get(W + "type", "dxa") == "dxa" else 0
+        ind = whole(ind_el.get(W + "w", 0)) if ind_el is not None and ind_el.get(W + "type", "dxa") == "dxa" else 0
         new_ind = max(0, ind - delta) if delta else ind
         if ind_el is not None:
             ind_el.set(W + "w", str(new_ind))
         cols = grid.findall(W + "gridCol")
-        total = sum(int(c.get(W + "w", 0)) for c in cols)
+        total = sum(whole(c.get(W + "w", 0)) for c in cols)
         avail = text_w - new_ind
         if total > avail and total:
             k = avail / total
             for c in cols:
-                c.set(W + "w", str(int(int(c.get(W + "w")) * k)))
+                c.set(W + "w", str(int(whole(c.get(W + "w")) * k)))
             for tcw in tbl.iter(W + "tcW"):
                 if tcw.get(W + "type", "dxa") == "dxa":
-                    tcw.set(W + "w", str(int(int(tcw.get(W + "w", 0)) * k)))
+                    tcw.set(W + "w", str(int(whole(tcw.get(W + "w", 0)) * k)))
             tw_el = tpr.find(W + "tblW")
             if tw_el is not None and tw_el.get(W + "type") == "dxa":
                 tw_el.set(W + "w", str(int(avail)))
@@ -874,7 +884,7 @@ class Fixer:
                     if rpr is not None and rpr.find(W + "vertAlign") is not None:
                         continue
                     sz = rpr.find(W + "sz") if rpr is not None else None
-                    val = int(sz.get(W + "val")) if sz is not None else None
+                    val = whole(sz.get(W + "val")) if sz is not None else None
                     if val is None or (self.body_hp - 6 <= val <= self.body_hp + 2 and val != self.body_hp):
                         rpr = get_rpr(r)
                         set_child(rpr, "sz", RPR_ORDER, val=self.body_hp)

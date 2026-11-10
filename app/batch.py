@@ -144,8 +144,15 @@ class Batch:
             item.check_count = len(items) - item.fix_count
             if item.kind == "Word" and self.make_fixed:
                 item.status = "fixing"
-                fixed, changes, _, _ = fix.fix(item.path, self.rules_path, outdir, check_after=False)
-                item.fixed, item.changes = fixed, changes
+                try:
+                    fixed, changes, _, _ = fix.fix(item.path, self.rules_path, outdir, check_after=False)
+                    item.fixed, item.changes = fixed, changes
+                except (check.Cancelled, check.ConversionError):
+                    raise
+                except Exception as e:
+                    item.message = f"The corrected copy could not be made ({type(e).__name__}: {e})."
+                    with open(os.path.join(outdir, "error.txt"), "w", encoding="utf-8") as fh:
+                        fh.write(traceback.format_exc())
             item.status = "done"
         except check.Cancelled:
             item.status, item.started = "stopped", None

@@ -54,6 +54,9 @@ jobs:
       - name: Check the wording
         run: python tests/lint_strings.py --run
 
+      - name: Correct a Word file converted from PDF
+        run: python tests/test_decimal_word.py
+
       - name: Build the program
         run: >
           pyinstaller --noconfirm --windowed --name "Manuscript Check"

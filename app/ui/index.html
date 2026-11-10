@@ -161,11 +161,12 @@ function resultCell(i) {
   if (i.status === "fixing") return `<span class="working">Correcting${took}</span><div class="bar"><i></i></div>`;
   if (i.status === "stopped") return '<span style="color:var(--muted)">Stopped</span>';
   if (i.status === "failed") return `<span class="failed">${esc(i.message)}</span>`;
-  if (!i.fix_count && !i.check_count) return '<span class="clean">Matches the template</span>';
+  const note = i.message ? `<div class="failed">${esc(i.message)}</div>` : "";
+  if (!i.fix_count && !i.check_count) return '<span class="clean">Matches the template</span>' + note;
   const parts = [];
   if (i.fix_count) parts.push(`<span class="fixn">${i.fix_count} to fix</span>`);
   if (i.check_count) parts.push(`<span class="checkn">${i.check_count} to check</span>`);
-  return parts.join(", ");
+  return parts.join(", ") + note;
 }
 
 function actionCell(i) {
