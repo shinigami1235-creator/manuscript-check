@@ -26,7 +26,7 @@ WizardStyle=modern
 CloseApplications=yes
 
 [Messages]
-WelcomeLabel2=This installs Manuscript Check, which checks thesis files against the school's format.%n%nClose Word before you continue.
+WelcomeLabel2=This installs Manuscript Check for checking theses against the school's format.
 
 [Tasks]
 Name: "desktopicon"; Description: "Put a Manuscript Check icon on the desktop"

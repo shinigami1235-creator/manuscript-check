@@ -23,7 +23,7 @@
     "source_left": "Template PDF: text starts 3.81 cm (1.5 in) from the left edge",
     "source_right": "Template Word file: right margin 2.25 cm",
     "source_top": "Template Word file: top margin 3.0 cm",
-    "source_bottom": "Not set in the template (its Word file says 0.49 cm). 2.54 cm (1 in) is assumed. Confirm with the graduate office."
+    "source_bottom": "The template Word file sets 0.49 cm, which is too small to print."
   },
 
   "page_number": {

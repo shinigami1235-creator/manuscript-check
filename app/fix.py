@@ -430,7 +430,7 @@ class Fixer:
                 set_child(ppr, "pageBreakBefore", PPR_ORDER)
             n += 1
         if n:
-            self.note(f"Put each of the {n} chapter headings on two lines, CHAPTER n and then the title, each starting a new page.")
+            self.note(f"Split {n} chapter headings into two lines, such as CHAPTER 1 and then INTRODUCTION, each starting a new page.")
 
     # 2b. front headings out of the outline, lists of tables and figures built from the captions
     def fix_contents(self):
@@ -595,7 +595,7 @@ class Fixer:
             if rpr is not None:
                 set_child(rpr, "sz", RPR_ORDER, val=self.head_hp)
                 set_child(rpr, "szCs", RPR_ORDER, val=self.head_hp)
-        self.note(f"Set {n} chapter and section headings to {self.head_hp / 2:g} pt bold capitals, centred.")
+        self.note(f"Set {n} main headings, such as ABSTRACT, the chapter headings and REFERENCES, in {self.head_hp / 2:g} pt bold capitals, centred.")
 
     # 3. numbered section headings (2.1, 2.2) start at the margin
     def fix_section_heading_indents(self):
@@ -728,8 +728,8 @@ class Fixer:
                 if tab.get(W + "pos") and int(tab.get(W + "pos")) > text_w:
                     tab.set(W + "pos", str(text_w))
         self.note(f"Set the left margin to {self.rules['margins']['left_text_cm']} cm, the right margin to at least {self.rules['margins']['right_cm']} cm "
-                  f"and the bottom margin to at least {self.rules['margins']['bottom_cm']} cm in {changed_sections} sections, and moved "
-                  f"{moved} paragraphs so they keep their place against the new margin.")
+                  f"and the bottom margin to at least {self.rules['margins']['bottom_cm']} cm in {changed_sections} sections, and shifted "
+                  f"{moved} indented paragraphs to match.")
 
     def fit_tabs(self, p, text_w):
         ind = self.d.eff_ind(p)
@@ -814,7 +814,7 @@ class Fixer:
                 n += 1
         if n:
             how = f"{left / TWIP_PER_CM:.2f} cm from the margin" + (f" with the first line {first / TWIP_PER_CM:.2f} cm further in" if first else "")
-            self.note(f"Indented {n} body paragraphs that started at the margin to {how}, the same as the rest of the chapters.")
+            self.note(f"Indented {n} body paragraphs {how} to match the rest of the chapters.")
 
     # 6. line spacing 1.5 from the abstract on
     def fix_line_spacing(self):
@@ -909,7 +909,7 @@ class Fixer:
     def fix_page_numbers(self):
         pn = self.rules["page_number"]
         if pn.get("position", "top") != "top" or pn.get("align", "right") != "right":
-            self.note(f"Page numbers were left as they are since this format puts them at the {pn.get('position')} {pn.get('align')}. Check them in the report.")
+            self.note(f"Page numbers were not changed since this format puts them at the {pn.get('position')} {pn.get('align')}. Check them in the report.")
             return
         secs = [sp for sp, _ in self.sections()]
 
@@ -1024,7 +1024,6 @@ class Fixer:
             nxt = next((c for c in st if etree.QName(c).localname in after), None)
             uf = el("updateFields", val="true")
             nxt.addprevious(uf) if nxt is not None else st.append(uf)
-            self.note("Word will ask to update fields when the file opens. Answer Yes so the table of contents and the lists get the new page numbers.")
 
     def run(self):
         self.fix_back_matter()
@@ -1135,9 +1134,9 @@ def replace_text(p, text):
 
 
 NOT_FIXED = [
-    "The wording is not changed. A title that differs between pages and leftover template text still need fixing by hand.",
-    "Open the fixed file in Word, answer Yes when it asks to update fields, then save it as PDF and check the PDF.",
-    "Anything marked Check in the report is for the graduate office to decide.",
+    "Wording, such as a title that differs between pages and leftover template text.",
+    "Page numbers in the contents and lists. Open the fixed file in Word and answer Yes when it asks to update fields, then save it as PDF and check the PDF.",
+    "Check items in the report, which the graduate office decides.",
 ]
 
 
@@ -1149,7 +1148,7 @@ def fix(path, rules_path=DEFAULT_RULES, outdir=None, check_after=True):
     if path.lower().endswith(".doc"):
         # an old Word file is saved as .docx by Word first
         if not ((os.name == "nt" or check.MAC) and check.word_available()):
-            raise check.ConversionError(f"{os.path.basename(path)} is an old Word file and Microsoft Word was not found to open it.")
+            raise check.ConversionError(f"{os.path.basename(path)} is an old .doc file and needs Microsoft Word to open.")
         import tempfile
         newer = os.path.join(tempfile.mkdtemp(), base + ".docx")
         check.run_word("docx", path, newer)
@@ -1163,7 +1162,7 @@ def fix(path, rules_path=DEFAULT_RULES, outdir=None, check_after=True):
     f.d.save(out)
     log = os.path.join(outdir, f"{base} - fixed changes.txt")
     with open(log, "w", encoding="utf-8") as fh:
-        fh.write(f"Changes made to {os.path.basename(path)}. The original file was not changed.\n\n")
+        fh.write(f"Changes made in {os.path.basename(out)}:\n\n")
         for line in f.log:
             fh.write(f"- {line}\n")
         fh.write("\nLeft for the student:\n\n")

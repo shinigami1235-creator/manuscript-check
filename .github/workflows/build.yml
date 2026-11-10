@@ -51,6 +51,9 @@ jobs:
       - name: Test the checker before packaging
         run: python launcher.py --selftest tests/sample-thesis.pdf selftest-source
 
+      - name: Check the wording
+        run: python tests/lint_strings.py --run
+
       - name: Build the program
         run: >
           pyinstaller --noconfirm --windowed --name "Manuscript Check"

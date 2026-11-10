@@ -121,9 +121,9 @@ def learn(pdf_path, docx_path=None, name=None):
     top_cm = round(min(tops) - 0.1, 2) if tops else 2.54
     bottom_cm = 2.54
     sources = {"left": "Template PDF: where text starts on most pages",
-               "right": "Template PDF: the widest line. Confirm with the graduate office if the template has few full lines.",
+               "right": "Template PDF: the widest line",
                "top": "Template PDF: highest text below the page number",
-               "bottom": "Not visible in a template PDF. 2.54 cm (1 in) is assumed. Confirm with the graduate office."}
+               "bottom": "A template PDF does not show the bottom margin."}
     if docx_path:
         try:
             import docx
@@ -140,9 +140,9 @@ def learn(pdf_path, docx_path=None, name=None):
             if b_docx and b_docx >= 1.5:
                 bottom_cm, sources["bottom"] = b_docx, "Template Word file: bottom margin"
             elif b_docx:
-                notes.append(f"The template Word file sets the bottom margin to {b_docx} cm, which is too small to print. 2.54 cm is used instead.")
+                notes.append(f"The template Word file sets the bottom margin to {b_docx} cm, which is too small to print, and 2.54 cm is used.")
         except Exception as e:
-            notes.append(f"The Word file could not be read ({e}). Margins come from the PDF only.")
+            notes.append(f"The template Word file could not be read ({e}) and the margins come from the PDF.")
 
     # line spacing: distance between consecutive body lines
     pitches = []
@@ -296,7 +296,7 @@ def describe(rules, notes):
         f"Learned from {rules['learned_from']}.",
         "",
         f"Page: {rules['page']['width_cm']} x {rules['page']['height_cm']} cm",
-        f"Font: {', '.join(rules['fonts']['allowed'][:1])}",
+        f"Font: {rules['fonts'].get('name') or rules['fonts']['allowed'][0]}",
         f"Text sizes: body {s['body_pt']:g} pt, headings {s['heading_pt']:g} pt, cover title {s['cover_title_pt']:g} pt",
         f"Margins: text starts {m['left_text_cm']} cm from the left, right {m['right_cm']} cm, top {m['top_text_cm']} cm, bottom {m['bottom_cm']} cm",
         f"Line spacing: {rules['line_spacing']['source'].split(': ', 1)[1]}",
@@ -311,7 +311,7 @@ def describe(rules, notes):
     ]
     if notes:
         lines += [""] + notes
-    lines += ["", "Check these numbers against the school's format guide and correct any in the rules file before using it."]
+    lines += ["", "Compare these numbers with the school's format guide and correct the rules file where they differ."]
     return "\n".join(lines)
 
 

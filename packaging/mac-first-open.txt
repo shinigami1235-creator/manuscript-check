@@ -3,21 +3,19 @@ Installing Manuscript Check on a Mac
 1. Drag Manuscript Check onto the Applications folder in this window.
 2. Open Applications and double-click Manuscript Check.
 
-The first time, the Mac says it cannot check the program for malware, because it is not
-registered with Apple. Click Done, then:
+The first time, the Mac blocks it since it is not registered with Apple. Click Done, then:
 
   macOS 15 (Sequoia) or newer
     Open System Settings, then Privacy & Security. Scroll down to the line about
-    Manuscript Check being blocked and click Open Anyway. Type the Mac password if asked,
-    then click Open Anyway again.
+    Manuscript Check and click Open Anyway. Type the Mac password if asked, then click
+    Open Anyway again.
 
   macOS 14 (Sonoma) or older
     In Applications, hold Control and click Manuscript Check, choose Open, then click Open.
 
-This is needed once. After that it opens with a normal double-click and updates itself.
+After the first time it opens with a double-click and updates itself.
 
 Word files
-  Checking a Word file needs Microsoft Word or LibreOffice on the Mac. The first time,
-  the Mac asks if Manuscript Check may control Microsoft Word. Click OK. If it also asks
-  to access data from other apps, click Allow. Word only opens a copy of the file.
-  PDF files need nothing else.
+  Checking Word files needs Microsoft Word or LibreOffice. The first time you check one,
+  click OK when the Mac asks to let Manuscript Check control Microsoft Word, and Allow
+  if it asks to access data from other apps.

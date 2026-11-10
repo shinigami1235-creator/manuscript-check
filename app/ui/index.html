@@ -98,11 +98,11 @@
 
 <main>
   <div class="notice update hidden" id="update"><span id="updateText"></span><button class="small" id="updateBtn"></button></div>
-  <div class="notice hidden" id="noWord">Microsoft Word was not found on this computer, so Word files cannot be checked here. Ask students for a PDF saved from Word.</div>
+  <div class="notice hidden" id="noWord">Word files cannot be checked on this computer since Microsoft Word is not installed. Ask for the PDF instead.</div>
 
   <div id="drop">
     <h2>Drop theses here</h2>
-    <p>PDF or Word files, one or many at a time. A whole folder works too.</p>
+    <p>PDF or Word files, or a folder of them</p>
     <div class="buttons">
       <button id="addFiles">Add files</button>
       <button id="addFolder">Add a folder</button>
@@ -120,7 +120,7 @@
   <div class="where"><span>Results are saved in</span> <b id="resultsPath"></b> <button class="link" id="changeFolder">Change</button><button class="link" id="openFolder">Open folder</button></div>
   <div class="go">
     <button id="clear">Clear list</button>
-    <button id="summary" class="hidden">Save summary for Excel</button>
+    <button id="summary" class="hidden">Save Excel summary</button>
     <button id="stop" class="hidden">Stop</button>
     <button id="start" class="primary" disabled>Check</button>
   </div>
@@ -129,11 +129,11 @@
 <div id="modal">
   <div class="dialog">
     <h2>Formats</h2>
-    <p>Each format is one school's thesis template. The one picked at the top is used for every check.</p>
+    <p>Theses are checked against the format picked at the top of the window.</p>
     <ul id="formatList"></ul>
     <h2>Add a format</h2>
-    <p>Choose the school's template PDF and the program measures it. Put the Word copy of the template next to the PDF with the same name, since the margins are read from it.</p>
-    <div class="row"><input type="text" id="formatName" placeholder="Name of the format, such as Mahidol MSc thesis 2025"><button id="learn">Choose template PDF</button></div>
+    <p>Choose the school's template PDF. Keep the Word copy of the template in the same folder with the same name since the margins are read from it.</p>
+    <div class="row"><input type="text" id="formatName" placeholder="Format name, such as Mahidol MSc thesis 2025"><button id="learn">Choose template PDF</button></div>
     <div id="learnResult" class="hidden">
       <p id="learnNote"></p>
       <pre id="learnSummary"></pre>
@@ -158,7 +158,7 @@ function resultCell(i) {
   if (i.status === "waiting") return '<span style="color:var(--muted)">Waiting</span>';
   const took = i.started ? ` ${clock(Date.now() / 1000 - i.started)}` : "";
   if (i.status === "checking") return `<span class="working">Checking${took}</span><div class="bar"><i></i></div>`;
-  if (i.status === "fixing") return `<span class="working">Making the corrected copy${took}</span><div class="bar"><i></i></div>`;
+  if (i.status === "fixing") return `<span class="working">Correcting${took}</span><div class="bar"><i></i></div>`;
   if (i.status === "stopped") return '<span style="color:var(--muted)">Stopped</span>';
   if (i.status === "failed") return `<span class="failed">${esc(i.message)}</span>`;
   if (!i.fix_count && !i.check_count) return '<span class="clean">Matches the template</span>';
@@ -195,7 +195,7 @@ function render(state) {
       <td class="pages">${i.pages ?? ""}</td>
       <td class="result">${resultCell(i)}</td>
       <td class="actions">${actionCell(i)}</td>
-      <td class="remove">${S.running ? "" : `<button title="Remove from the list" data-remove="${i.id}">&times;</button>`}</td>
+      <td class="remove">${S.running ? "" : `<button title="Remove" data-remove="${i.id}">&times;</button>`}</td>
     </tr>`).join("");
 
   const todo = items.filter(i => i.status !== "done").length;
@@ -241,7 +241,7 @@ function wire() {
     if (r.cancelled) return;
     $("learnResult").classList.remove("hidden");
     if (r.error) { $("learnNote").textContent = r.error; $("learnSummary").textContent = ""; return; }
-    $("learnNote").textContent = "The new format is saved and picked at the top. Read this list against the school's format guide before checking theses with it.";
+    $("learnNote").textContent = "The new format is saved and picked at the top of the window.";
     $("learnSummary").textContent = r.summary;
     render(r.state); fillFormats();
   };
@@ -256,12 +256,12 @@ async function watchUpdate() {
   if (u.status === "checking") return setTimeout(watchUpdate, 3000);
   const box = $("update"), btn = $("updateBtn");
   if (u.status === "ready") {
-    $("updateText").textContent = `Version ${u.version} is ready and starts the next time Manuscript Check opens.`;
+    $("updateText").textContent = `Version ${u.version} starts the next time Manuscript Check opens.`;
     btn.textContent = "Restart now";
-    btn.onclick = async () => { if (!(await api.restart())) $("updateText").textContent = `Version ${u.version} starts once this check finishes and the program is reopened.`; };
+    btn.onclick = async () => { if (!(await api.restart())) $("updateText").textContent = `Restart after the check finishes to use version ${u.version}.`; };
     box.classList.remove("hidden");
   } else if (u.status === "installer") {
-    $("updateText").textContent = `Version ${u.version} needs a new installer.`;
+    $("updateText").textContent = `Version ${u.version} needs the new installer.`;
     btn.textContent = "Download installer";
     btn.onclick = () => api.open_url(u.url);
     box.classList.remove("hidden");

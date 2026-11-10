@@ -512,12 +512,12 @@ def check_margins(pages, rules, F):
         F.add("fix", "Margins", f"Text on {pg(list(issues['right']))} runs into the {m['right_cm']} cm right margin, reaching {r2(worst)} cm from the left edge. Make it fit inside the margins.",
               min(issues["right"]), m["source_right"], boxes(issues["right"]))
     if issues["top"]:
-        F.add("fix", "Margins", f"Text on {pg(list(issues['top']))} starts inside the {m['top_text_cm']} cm top margin. Move it down below the margin.",
+        F.add("fix", "Margins", f"Text on {pg(list(issues['top']))} starts inside the {m['top_text_cm']} cm top margin. Move it below the margin.",
               min(issues["top"]), m["source_top"], boxes(issues["top"]))
     if issues["bottom"]:
         worst = max(l.bottom for ls in issues["bottom"].values() for l in ls)
         F.add("check", "Margins", f"Text on {pg(list(issues['bottom']))} comes within {r2(pages[0].height - worst)} cm of the bottom edge. "
-              f"A {m['bottom_cm']} cm bottom margin is assumed.", min(issues["bottom"]), m["source_bottom"], boxes(issues["bottom"]))
+              f"The usual bottom margin is {m['bottom_cm']} cm and the template does not set one.", min(issues["bottom"]), m["source_bottom"], boxes(issues["bottom"]))
     if issues["img_r"]:
         worst = max(i[2] for ims in issues["img_r"].values() for i in ims)
         bx = [(pn, (a / PT_TO_CM, b / PT_TO_CM, c / PT_TO_CM, d / PT_TO_CM)) for pn, ims in issues["img_r"].items() for (a, b, c, d) in ims]
@@ -537,7 +537,7 @@ def check_page_numbers(pages, rules, F):
     r = rules["page_number"]
     numbered_early = [p.no for p in pages if p.kind in ("cover", "approval") and p.label]
     if numbered_early:
-        F.add("fix", "Page numbers", f"The cover and approval pages ({pg(numbered_early)}) have page numbers. Remove them.",
+        F.add("fix", "Page numbers", f"Remove the page numbers from the cover and approval pages ({pg(numbered_early)}).",
               numbered_early[0], r["source"])
     front = [p for p in pages if p.kind == "front"]
     body = [p for p in pages if p.kind in ("chapter", "back")]
@@ -553,7 +553,7 @@ def check_page_numbers(pages, rules, F):
                   f"Number {start_name} {STYLE_NAME[style]}.", first.no, r["source"],
                   [(p.no, p.label_line.bbox_pt()) for p in wrong_style])
         if missing:
-            F.add("fix", "Page numbers", f"{pg([p.no for p in missing], True)} {'has' if len(missing) == 1 else 'have'} no page number. Add {'it' if len(missing) == 1 else 'them'}.", missing[0].no, r["source"])
+            F.add("fix", "Page numbers", f"Add page numbers to {pg([p.no for p in missing])}.", missing[0].no, r["source"])
         expected = 1
         for p in group:
             if p.label:
@@ -602,7 +602,7 @@ def check_structure(pages, headings, rules, F):
     keys = [heading_key(h) for h in headings]
     present = {h["name"] for h in headings}
     if rules.get("approval_page", True) and not any(p.kind == "approval" for p in pages):
-        F.add("fix", "Structure", "There is no approval page after the cover. Add it.", 2, src)
+        F.add("fix", "Structure", "Add the approval page after the cover.", 2, src)
     for req in rules["required"]:
         if req == "CHAPTER":
             ok = any(h["name"] == "CHAPTER" and h["title"] not in rules["not_chapters"] for h in headings)
@@ -614,10 +614,10 @@ def check_structure(pages, headings, rules, F):
             alias = next((h for h in headings for g in ALIASES if req in g and (h["name"] in g or h.get("title") in g)), None)
             if alias:
                 got = alias["title"] if alias["name"] == "CHAPTER" else alias["name"]
-                F.add("fix", "Structure", f"The page headed {got} should be headed {req}.", alias["page"].no, src,
+                F.add("fix", "Structure", f"Change the heading {got} to {req}.", alias["page"].no, src,
                       [(alias["page"].no, l.bbox_pt()) for l in alias["lines"]])
             else:
-                F.add("fix", "Structure", f"There is no {req} page. Add it.", None, src)
+                F.add("fix", "Structure", ("Add the chapters." if req == "CHAPTER" else f"Add the {req} page."), None, src)
 
     # back matter dressed up as a chapter
     for h in headings:
@@ -674,7 +674,7 @@ def check_structure(pages, headings, rules, F):
             want = rules["chapter_titles"].get(str(h["number"]))
             if want and h["title"] and h["title"] != want and not any(h["title"].startswith(n) for n in rules["not_chapters"]):
                 F.add("check", "Structure", f"CHAPTER {h['number']} is titled {h['title']} and the template names it {want}.",
-                      h["page"].no, "Template PDF chapter titles. Chapters 6 to 8 are open in the template, so other names may be accepted.")
+                      h["page"].no, "Template PDF chapter titles. Chapters 6 to 8 have no set name.")
 
     # how each heading looks
     hp = rules["sizes"]["heading_pt"]
@@ -921,7 +921,7 @@ def check_titles(pages, rules, F):
 
         for want in rules["cover_lines"]:
             if not present(want):
-                F.add("fix", "Cover", f"The cover has no \"{want}\" line. Add it.", cover.no, "Template PDF cover page")
+                F.add("fix", "Cover", f"Add the line \"{want}\" to the cover.", cover.no, "Template PDF cover page")
         name = norm(rest[1].text) if len(rest) > 1 else ""
         if re.search(r"\b(M\.?D|Ph\.?D|MBA|M\.?Sc|B\.?Sc|RN|DMD)\b", name):
             F.add("check", "Cover", f"The author line \"{name}\" includes degrees and the template shows the name only.", cover.no,
@@ -937,14 +937,14 @@ def check_abstract_fields(pages, rules, F):
     flat = txt.replace(" ", "")
     for f in rules["abstract_fields"]:
         if f.replace(" ", "") not in flat:
-            F.add("fix", "Abstract", f"The abstract page has no \"{f}\" line. Add it.", abs_page.no, "Template PDF abstract page")
+            F.add("fix", "Abstract", f"Add the \"{f}\" line to the abstract page.", abs_page.no, "Template PDF abstract page")
     if rules.get("abstract_keywords", True) and not re.search(r"Keywords?\s*:", txt):
-        F.add("fix", "Abstract", "The abstract has no \"Keywords:\" line. Add it below the abstract.", abs_page.no, "Template PDF abstract page")
+        F.add("fix", "Abstract", "Add a \"Keywords:\" line below the abstract.", abs_page.no, "Template PDF abstract page")
     for p in pages_abs:
         for l in p.lines:
             if re.match(r"^Faculty of [a-z]", l.text):
                 fixed = re.sub(r"^Faculty of (\w)", lambda m: "Faculty of " + m.group(1).upper(), norm(l.text))
-                F.add("check", "Abstract", f"Change \"{norm(l.text)}\" to \"{fixed}\".", p.no, "Spelling", [(p.no, l.bbox_pt())])
+                F.add("check", "Abstract", f"Change \"{norm(l.text)}\" to \"{fixed}\".", p.no, "Template PDF abstract page", [(p.no, l.bbox_pt())])
     # academic year agrees with the cover
     cy = re.search(r"ACADEMIC YEAR\s+(\d{4})", pages[0].text)
     ay = re.search(r"Academic Year\s+(\d{4})", txt)
@@ -1064,12 +1064,12 @@ def check_back(pages, rules, F):
         txt = norm(" ".join(p.text for p in bio))
         for f in rules["biography_fields"]:
             if not all(w in txt.split() for w in f.split()):
-                F.add("fix", "Biography", f"The biography has no \"{f}\" line. Add it.", bio[0].no, "Template PDF biography page")
+                F.add("fix", "Biography", f"Add the \"{f}\" line to the biography.", bio[0].no, "Template PDF biography page")
     ack = [p for p in pages if p.section and p.section["name"] == "ACKNOWLEDGEMENTS"]
     if ack and rules.get("acknowledgements_signed", True):
         last = ack[-1].lines[-1] if ack[-1].lines else None
         if last and last.x0 < ack[-1].width / 2:
-            F.add("check", "Acknowledgements", "The acknowledgements do not end with the author's name on the right. Add the name there.", ack[-1].no, "Template PDF acknowledgements page")
+            F.add("check", "Acknowledgements", "End the acknowledgements with the author's name on the right.", ack[-1].no, "Template PDF acknowledgements page")
 
 
 # ---------------------------------------------------------------- output
@@ -1104,8 +1104,8 @@ p.note{{color:#444;max-width:820px}}
 <h1>{html.escape(src_name)}</h1>
 <div class=meta>Checked against {html.escape(rules['name'])}. {len(pages)} pages.</div>
 <div class=sum><div><b>{n_fix}</b>to fix</div><div><b>{n_check}</b>to check</div></div>
-<p class=note>Fix items differ from the template and need changing. Check items are ones the template does not settle, so the graduate office decides.
-Page is the page in the PDF file, with the number printed on that page in brackets. The marked pages file boxes each problem with the same number.</p>
+<p class=note>Fix items differ from the template. Check items are for the graduate office to decide since the template does not cover them.
+The page is the page in the PDF, with the number printed on that page in brackets. The marked pages file boxes each problem with the same number.</p>
 <table><tr><th>#</th><th></th><th>Area</th><th>Page</th><th>Problem</th></tr>
 {''.join(rows)}
 </table></body></html>"""
@@ -1153,8 +1153,8 @@ def write_corrections_pdf(src_pdf, out_pdf, src_name, pages, findings, rules):
     story = [Paragraph(esc(src_name), title), Spacer(1, 4),
              Paragraph(f"Checked against {esc(rules['name'])}. {len(pages)} pages. <b>{n_fix} to fix, {len(items) - n_fix} to check.</b>", base),
              Spacer(1, 4),
-             Paragraph("Fix items differ from the template and need changing. Check items are ones the template does not settle, so the graduate office decides. "
-                       "Page is the page in the PDF file, with the number printed on that page in brackets. The pages after this list show each problem boxed with the same number.", base),
+             Paragraph("Fix items differ from the template. Check items are for the graduate office to decide since the template does not cover them. "
+                       "The page is the page in the PDF, with the number printed on that page in brackets. The pages after this list box each problem with the same number.", base),
              Spacer(1, 10), tbl]
     summary = io.BytesIO()
     SimpleDocTemplate(summary, pagesize=(W, H), leftMargin=1.2 * CM, rightMargin=1.2 * CM, topMargin=1.2 * CM, bottomMargin=1.2 * CM,
@@ -1409,9 +1409,7 @@ def run_word(kind, src, out, timeout=WORD_TIMEOUT):
             kill_pids(word_pids() - before)
             if CANCEL.is_set():
                 raise Cancelled()
-            raise ConversionError(f"Word stopped responding while opening {name} and was closed after {timeout // 60} minutes. "
-                                  "Open the file in Word, close any message it shows, save it, and check it again. "
-                                  "Or save it as PDF from Word and check the PDF.")
+            raise ConversionError(f"Word stopped responding on {name} and was closed after {timeout // 60} minutes. Ask for the PDF.")
         time.sleep(0.5)
     if proc.returncode != 0 or not os.path.exists(out):
         detail = ""
@@ -1419,7 +1417,7 @@ def run_word(kind, src, out, timeout=WORD_TIMEOUT):
             with open(err, encoding="utf-8", errors="replace") as fh:
                 lines = fh.read().strip().splitlines()
             detail = lines[-1][:200] if lines else ""
-        raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Save it as PDF from Word and check the PDF.")
+        raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Ask for the PDF.")
 
 
 def run_word_mac(kind, src, out, timeout=WORD_TIMEOUT):
@@ -1442,17 +1440,15 @@ def run_word_mac(kind, src, out, timeout=WORD_TIMEOUT):
                 proc.kill()
                 if CANCEL.is_set():
                     raise Cancelled()
-                raise ConversionError(f"Word stopped responding while opening {name} and the check was stopped after {timeout // 60} minutes. "
-                                      "Look for a message in Word and close it, then check the file again. "
-                                      "Or save it as PDF from Word and check the PDF.")
+                raise ConversionError(f"Word stopped responding on {name} for {timeout // 60} minutes. Close any message open in Word and check it again, or ask for the PDF.")
             time.sleep(0.5)
         if proc.returncode != 0 or not os.path.exists(made):
             detail = (proc.stderr.read() or "").strip().splitlines()
             detail = detail[-1][:200] if detail else ""
             if "-1743" in detail or "not allowed" in detail.lower():
-                raise ConversionError(f"The Mac did not let Manuscript Check use Word for {name}. In System Settings, open Privacy & Security, "
-                                      "then Automation, and turn on Microsoft Word under Manuscript Check. Then check the file again.")
-            raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Save it as PDF from Word and check the PDF.")
+                raise ConversionError("Manuscript Check is not allowed to use Word. Turn on Microsoft Word under Manuscript Check in "
+                                      "System Settings, Privacy & Security, Automation.")
+            raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Ask for the PDF.")
         shutil.move(made, out)
     finally:
         for f in (inside, made):
@@ -1517,7 +1513,7 @@ def docx_to_pdf(path, outdir):
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
         if os.path.exists(out):
             return out, "LibreOffice"
-    raise ConversionError(f"{os.path.basename(path)} could not be opened because Microsoft Word is not on this computer. Save it as PDF from Word and check the PDF.")
+    raise ConversionError(f"{os.path.basename(path)} could not be opened since Microsoft Word is not installed. Ask for the PDF.")
 
 
 # ---------------------------------------------------------------- main
@@ -1558,8 +1554,8 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
         tmp = tempfile.mkdtemp()
         pdf_path, converter = docx_to_pdf(path, tmp)
         if converter != "Microsoft Word":
-            F.add("check", "Word file", f"{src_name} was opened with {converter} because Microsoft Word is not on this computer. {converter} can move page breaks "
-                  "and change fonts. Page numbers and fonts here may not match Word. Check the PDF saved from Word if the student sent one.",
+            F.add("check", "Word file", f"{src_name} was opened with {converter} since Microsoft Word is not installed, and its page breaks and fonts may differ from Word. "
+                  "Check the PDF saved from Word if the student sent one.",
                   None, "Conversion")
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -1570,7 +1566,7 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
             raise ConversionError(f"{src_name} is password protected. Ask for a copy without a password.")
         raise ConversionError(f"{src_name} could not be opened as a PDF ({type(e).__name__}).")
     if sum(len(p.chars) for p in pages) < 40 * max(1, len(pages)):
-        raise ConversionError(f"{src_name} has almost no text in it, so it is probably scanned. Ask for the PDF saved from Word.")
+        raise ConversionError(f"{src_name} is a scan with almost no text. Ask for the PDF saved from Word.")
     measure_ink(pdf_path, pages, rules)
     headings = classify(pages, rules, F)
     check_page_size(pages, rules, F)
