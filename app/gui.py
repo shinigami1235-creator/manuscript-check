@@ -47,7 +47,7 @@ class Api:
     # ---- state for the page
     def state(self):
         if self._word is None:
-            self._word = check.word_available()
+            self._word = check.word_available() or bool(check.find_soffice())
         return {"formats": batch.formats(), "format": self._settings["format"], "results": self._settings["results"],
                 "make_fixed": self._settings["make_fixed"], "word": self._word, "version": VERSION,
                 "items": [i.to_dict() for i in self._items], "running": bool(self._batch and self._batch.running),
@@ -168,7 +168,10 @@ class Api:
     def restart(self):
         if self._batch and self._batch.running:
             return False
-        if getattr(sys, "frozen", False):
+        bundle = os.path.abspath(os.path.join(os.path.dirname(sys.executable), "..", ".."))
+        if getattr(sys, "frozen", False) and sys.platform == "darwin" and bundle.endswith(".app"):
+            subprocess.Popen(["open", "-n", bundle])
+        elif getattr(sys, "frozen", False):
             subprocess.Popen([sys.executable])
         else:
             subprocess.Popen([sys.executable, os.path.join(os.path.dirname(HERE), "launcher.py")])
@@ -197,6 +200,9 @@ class Api:
     def open_format_file(self, path):
         if os.name == "nt" and os.path.exists(path):
             subprocess.Popen(["notepad.exe", path])
+            return True
+        if sys.platform == "darwin" and os.path.exists(path):
+            subprocess.Popen(["open", "-t", path])
             return True
         return open_path(path)
 

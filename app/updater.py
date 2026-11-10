@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import sys
 import shutil
 import tempfile
 import urllib.request
@@ -10,7 +11,21 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The release page the updates come from. latest.json there names the newest version.
 FEED = "https://github.com/shinigami1235-creator/manuscript-check/releases/latest/download/latest.json"
-UPDATES = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Manuscript Check", "updates")
+if os.name == "nt":
+    UPDATES = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Manuscript Check", "updates")
+elif sys.platform == "darwin":
+    UPDATES = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Manuscript Check", "updates")
+else:
+    UPDATES = os.path.join(os.path.expanduser("~"), ".local", "share", "Manuscript Check", "updates")
+
+
+def installer_url(info):
+    """The installer for this kind of computer."""
+    if sys.platform == "darwin":
+        import platform
+        key = "installer_url_mac" if platform.machine() == "arm64" else "installer_url_mac_intel"
+        return info.get(key) or info.get("installer_url_mac") or ""
+    return info.get("installer_url", "")
 
 
 def vtuple(v):
@@ -62,7 +77,7 @@ def check_and_download(shell, feed=None):
     if os.path.exists(os.path.join(UPDATES, version, "bad")):
         return {"status": "current"}   # this version failed to start here before
     if int(info.get("shell", 1)) > shell:
-        return {"status": "installer", "version": version, "url": info.get("installer_url", "")}
+        return {"status": "installer", "version": version, "url": installer_url(info)}
     data = fetch(info["code_url"], timeout=120)
     if hashlib.sha256(data).hexdigest() != info["sha256"]:
         return {"status": "offline"}

@@ -1,6 +1,6 @@
 name: Build and release
 
-# Every push to main publishes a release. The program on staff computers reads latest.json
+# Every push to main publishes a release with the Windows installer and the Mac disk images. The program on staff computers reads latest.json
 # from the newest release and downloads only the program code. The installer is attached
 # too, for new computers and for releases that raise SHELL in launcher.py.
 #
@@ -17,6 +17,9 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      repo: ${{ steps.v.outputs.repo }}
     steps:
       - uses: actions/checkout@v4
 
@@ -150,23 +153,179 @@ jobs:
           name: Manuscript-Check-${{ steps.v.outputs.version }}
           path: release/
 
-      - name: Publish the release
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          $v = "${{ steps.v.outputs.version }}"
-          gh release create "v$v" release/* --repo "${{ steps.v.outputs.repo }}" --title "Manuscript Check $v" --notes "$(git log -1 --pretty=%B)"
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: apple-silicon
+          - runner: macos-15-intel
+            arch: intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      APP: dist/Manuscript Check.app
+    steps:
+      - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.11.1
+
+      - name: Version number
+        id: v
+        env:
+          RELEASE_REPO: ${{ secrets.RELEASE_REPO }}
+        run: |
+          repo="${RELEASE_REPO:-${{ github.repository }}}"
+          version="1.0.${{ github.run_number }}"
+          shell=$(sed -n 's/^SHELL = \([0-9]*\).*/\1/p' launcher.py)
+          printf '{"version": "%s", "shell": %s, "feed": "https://github.com/%s/releases/latest/download/latest.json"}' "$version" "$shell" "$repo" > app/version.json
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          cat app/version.json
+
+      - name: Test the checker before packaging
+        run: |
+          python launcher.py --selftest tests/sample-thesis.pdf selftest-source
+          cat selftest-source/selftest.log
+
+      - name: Build the program
+        run: >
+          pyinstaller --noconfirm --windowed --name "Manuscript Check"
+          --icon packaging/icon.icns
+          --osx-bundle-identifier io.github.shinigami1235.manuscriptcheck
+          --add-data "app:appcode"
+          --collect-all pypdfium2
+          --collect-all pdfplumber
+          --collect-all pdfminer
+          --collect-all reportlab
+          --collect-all pypdf
+          --collect-all openpyxl
+          --collect-all webview
+          --collect-submodules lxml
+          --collect-submodules PIL
+          --hidden-import webview.platforms.cocoa
+          --exclude-module tkinter
+          launcher.py
+
+      - name: Let it ask to use Word, then sign it
+        run: |
+          plist="$APP/Contents/Info.plist"
+          v="${{ steps.v.outputs.version }}"
+          plutil -insert NSAppleEventsUsageDescription -string "Manuscript Check opens Word files in Microsoft Word so they are laid out the way the student sees them." "$plist"
+          plutil -replace CFBundleShortVersionString -string "$v" "$plist"
+          plutil -replace CFBundleVersion -string "$v" "$plist"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
+
+      - name: Test the built program
+        run: |
+          "$APP/Contents/MacOS/Manuscript Check" --selftest "$PWD/tests/sample-thesis.pdf" "$PWD/selftest" || { cat selftest/selftest.log; exit 1; }
+          cat selftest/selftest.log
+
+      - name: Open the window
+        run: |
+          "$APP/Contents/MacOS/Manuscript Check" --uitest "$PWD/uitest" &
+          pid=$!
+          for i in $(seq 120); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          if kill -0 $pid 2>/dev/null; then kill $pid; echo "The window did not close by itself"; exit 1; fi
+          rc=0; wait $pid || rc=$?
+          cat uitest/uitest.log
+          exit $rc
+
+      - name: Check a Word file through LibreOffice
+        # GitHub's Macs have no Word. This only shows whether the LibreOffice route works.
+        continue-on-error: true
+        run: |
+          brew install --cask libreoffice --quiet
+          rc=0; "$APP/Contents/MacOS/Manuscript Check" --selftest "$PWD/tests/sample-thesis.docx" "$PWD/selftest-docx" || rc=$?
+          cat selftest-docx/selftest.log
+          exit $rc
+
+      - name: Make the disk image
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          mkdir -p dmg release
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          cp packaging/mac-first-open.txt "dmg/Read me first.txt"
+          out="release/Manuscript-Check-$v-mac-${{ matrix.arch }}.dmg"
+          for i in 1 2 3 4 5; do
+            hdiutil create -volname "Manuscript Check" -srcfolder dmg -ov -format UDZO "$out" && break
+            sleep 10
+          done
+          test -f "$out"
+
+      - name: Test the disk image
+        run: |
+          dmg=$(ls release/*.dmg)
+          hdiutil attach -nobrowse -mountpoint /tmp/mc "$dmg"
+          mkdir -p ~/Applications
+          rm -rf ~/Applications/"Manuscript Check.app"
+          cp -R "/tmp/mc/Manuscript Check.app" ~/Applications/
+          hdiutil detach /tmp/mc
+          codesign --verify --deep --strict ~/Applications/"Manuscript Check.app"
+          ~/Applications/"Manuscript Check.app/Contents/MacOS/Manuscript Check" --selftest "$PWD/tests/sample-thesis.pdf" "$PWD/selftest-dmg"
+          cat selftest-dmg/selftest.log
+          codesign --verify --deep --strict ~/Applications/"Manuscript Check.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Manuscript-Check-${{ steps.v.outputs.version }}-mac-${{ matrix.arch }}
+          path: release/
+
+  publish:
+    needs: [windows, mac]
+    if: ${{ !cancelled() && needs.windows.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Add the Mac disk images to latest.json
+        run: |
+          v="${{ needs.windows.outputs.version }}"
+          base="https://github.com/${{ needs.windows.outputs.repo }}/releases/download/v$v"
+          cd release
+          for pair in "apple-silicon:installer_url_mac" "intel:installer_url_mac_intel"; do
+            arch="${pair%%:*}"; key="${pair##*:}"
+            f="Manuscript-Check-$v-mac-$arch.dmg"
+            if [ -f "$f" ]; then
+              jq --arg k "$key" --arg u "$base/$f" '.[$k] = $u' latest.json > t.json && mv t.json latest.json
+            else
+              echo "No $arch disk image this time"
+            fi
+          done
+          cat latest.json
+          ls -l
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          v="${{ needs.windows.outputs.version }}"
+          gh release create "v$v" release/* --repo "${{ needs.windows.outputs.repo }}" --title "Manuscript Check $v" --notes "$(git log -1 --pretty=%B)"
+
+  update-windows:
+    needs: [windows, publish]
+    runs-on: windows-latest
+    steps:
       - name: Test updating from the previous release
-        if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          $repo = "${{ steps.v.outputs.repo }}"
-          $new = "${{ steps.v.outputs.version }}"
+          $repo = "${{ needs.windows.outputs.repo }}"
+          $new = "${{ needs.windows.outputs.version }}"
           $prev = (gh api "repos/$repo/releases" --jq '.[1].tag_name').TrimStart("v")
           if (-not $prev -or [version]$prev -lt [version]"1.0.3") { "No earlier release that can run this test"; exit 0 }
           gh release download "v$prev" --repo $repo --pattern "Manuscript-Check-Setup-*.exe" --dir old
@@ -182,3 +341,32 @@ jobs:
           $now = (Get-Content (Join-Path $out "version.txt"))[0]
           "Installed $prev, now starts as $now"
           if ($now -ne $new) { throw "Update from $prev to $new did not take" }
+
+  update-mac:
+    needs: [windows, publish]
+    runs-on: macos-14
+    steps:
+      - name: Test updating from the previous release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          repo="${{ needs.windows.outputs.repo }}"
+          new="${{ needs.windows.outputs.version }}"
+          prev=$(gh api "repos/$repo/releases" --jq '.[1].tag_name')
+          if ! gh release view "$prev" --repo "$repo" --json assets --jq '.assets[].name' | grep -q 'mac-apple-silicon.dmg'; then
+            echo "The previous release has no Mac disk image to update from"; exit 0
+          fi
+          gh release download "$prev" --repo "$repo" --pattern "*mac-apple-silicon.dmg" --dir old
+          hdiutil attach -nobrowse -mountpoint /tmp/mc old/*.dmg
+          mkdir -p ~/Applications
+          cp -R "/tmp/mc/Manuscript Check.app" ~/Applications/
+          hdiutil detach /tmp/mc
+          rm -rf ~/"Library/Application Support/Manuscript Check/updates"
+          exe=~/Applications/"Manuscript Check.app/Contents/MacOS/Manuscript Check"
+          sleep 20
+          "$exe" --updatetest "$PWD/updatetest" || true
+          cat updatetest/update.log
+          "$exe" --whichversion "$PWD/updatetest"
+          now=$(head -1 updatetest/version.txt)
+          echo "Installed ${prev#v}, now starts as $now"
+          test "$now" = "$new"

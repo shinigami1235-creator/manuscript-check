@@ -2,7 +2,8 @@
 
 The installer carries Python and the libraries (the shell) plus a copy of the program code.
 Updates replace only the program code: they are unpacked into
-%LOCALAPPDATA%\\Manuscript Check\\updates\\<version>\\ and used from the next start.
+%LOCALAPPDATA%\\Manuscript Check\\updates\\<version>\\ on Windows, or
+~/Library/Application Support/Manuscript Check/updates/<version>/ on a Mac, and used from the next start.
 An update that fails to start is marked bad and the previous code is used instead.
 """
 import json
@@ -22,6 +23,8 @@ def _deps():
     import webview, webview.dom  # noqa
     if os.name == "nt":
         import winreg, pythoncom, win32com.client  # noqa
+    if sys.platform == "darwin":
+        import platform, uuid, webview.platforms.cocoa  # noqa
 
 
 def base_dir():
@@ -34,7 +37,13 @@ def bundled_code():
 
 
 def updates_root():
-    return os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "Manuscript Check", "updates")
+    if os.name == "nt":
+        root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    elif sys.platform == "darwin":
+        root = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        root = os.path.join(os.path.expanduser("~"), ".local", "share")
+    return os.path.join(root, "Manuscript Check", "updates")
 
 
 def vtuple(v):
@@ -68,6 +77,8 @@ def candidates():
 
 
 def main():
+    if getattr(sys, "frozen", False) and sys.platform == "darwin":
+        sys.dont_write_bytecode = True   # writing .pyc files inside the app would break its signature
     for _, code, bundled in candidates():
         sys.path.insert(0, code)
         try:

@@ -34,7 +34,22 @@ PT_TO_CM = 2.54 / 72
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = HERE   # rules/ and ui/ sit next to the code, both in the installed program and in a downloaded update
 DEFAULT_RULES = os.path.join(BASE, "rules", "tu-cicm-thesis-2022.json")
-USER_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Manuscript Check")
+MAC = sys.platform == "darwin"
+
+
+def data_dir(local=False):
+    """Where settings, learned formats and updates live: %APPDATA% (or %LOCALAPPDATA%) on Windows,
+    ~/Library/Application Support on a Mac."""
+    if os.name == "nt":
+        root = os.environ.get("LOCALAPPDATA" if local else "APPDATA") or os.path.expanduser("~")
+    elif MAC:
+        root = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        root = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    return os.path.join(root, "Manuscript Check")
+
+
+USER_DIR = data_dir()
 USER_RULES = os.path.join(USER_DIR, "rules")      # formats learned on this computer
 
 
@@ -1344,8 +1359,45 @@ def kill_pids(pids):
             pass
 
 
+MAC_WORD_SCRIPT = r'''
+on run argv
+    set inPath to item 1 of argv
+    set outPath to item 2 of argv
+    set kind to item 3 of argv
+    set docName to item 4 of argv
+    tell application "Microsoft Word"
+        try
+            set display alerts to alerts none
+        end try
+        open (POSIX file inPath)
+        set theDoc to document docName
+        if kind is "pdf" then
+            try
+                repeat with t in (tables of contents of theDoc)
+                    update t
+                end repeat
+            end try
+            save as theDoc file name outPath file format format PDF
+        else
+            save as theDoc file name outPath file format format document
+        end if
+        close theDoc saving no
+    end tell
+end run
+'''
+
+
+def mac_word_dir():
+    """Word on a Mac can only open files in places it is allowed to, so the file is copied into the Office shared folder first."""
+    d = os.path.join(os.path.expanduser("~"), "Library", "Group Containers", "UBF8T346G9.Office", "Manuscript Check")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def run_word(kind, src, out, timeout=WORD_TIMEOUT):
     """Has Word convert one file in a separate process, which is shut down if it hangs or Stop is pressed."""
+    if MAC:
+        return run_word_mac(kind, src, out, timeout)
     name = os.path.basename(src)
     before = word_pids()
     err = out + ".err"
@@ -1370,7 +1422,49 @@ def run_word(kind, src, out, timeout=WORD_TIMEOUT):
         raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Save it as PDF from Word and check the PDF.")
 
 
+def run_word_mac(kind, src, out, timeout=WORD_TIMEOUT):
+    import uuid
+    name = os.path.basename(src)
+    work = mac_word_dir()
+    tag = uuid.uuid4().hex[:8]
+    ext = os.path.splitext(src)[1].lower()
+    inside = os.path.join(work, f"mc-{tag}{ext}")
+    made = os.path.join(work, f"mc-{tag}-out.{'pdf' if kind == 'pdf' else 'docx'}")
+    shutil.copyfile(src, inside)
+    proc = subprocess.Popen(["osascript", "-", inside, made, kind, os.path.basename(inside)], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc.stdin.write(MAC_WORD_SCRIPT)
+    proc.stdin.close()
+    started = time.time()
+    try:
+        while proc.poll() is None:
+            if CANCEL.is_set() or time.time() - started > timeout:
+                proc.kill()
+                if CANCEL.is_set():
+                    raise Cancelled()
+                raise ConversionError(f"Word stopped responding while opening {name} and the check was stopped after {timeout // 60} minutes. "
+                                      "Look for a message in Word and close it, then check the file again. "
+                                      "Or save it as PDF from Word and check the PDF.")
+            time.sleep(0.5)
+        if proc.returncode != 0 or not os.path.exists(made):
+            detail = (proc.stderr.read() or "").strip().splitlines()
+            detail = detail[-1][:200] if detail else ""
+            if "-1743" in detail or "not allowed" in detail.lower():
+                raise ConversionError(f"The Mac did not let Manuscript Check use Word for {name}. In System Settings, open Privacy & Security, "
+                                      "then Automation, and turn on Microsoft Word under Manuscript Check. Then check the file again.")
+            raise ConversionError(f"Word could not open {name}{f' ({detail})' if detail else ''}. Save it as PDF from Word and check the PDF.")
+        shutil.move(made, out)
+    finally:
+        for f in (inside, made):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
 def word_available():
+    if MAC:
+        return any(os.path.isdir(os.path.join(d, "Microsoft Word.app")) for d in ("/Applications", os.path.expanduser("~/Applications")))
     try:
         import win32com.client  # noqa: F401
         import winreg
@@ -1382,7 +1476,9 @@ def word_available():
 
 def find_soffice():
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
-    for guess in (r"C:\Program Files\LibreOffice\program\soffice.exe", r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"):
+    for guess in (r"C:\Program Files\LibreOffice\program\soffice.exe", r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+                  "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                  os.path.expanduser("~/Applications/LibreOffice.app/Contents/MacOS/soffice")):
         if not soffice and os.path.exists(guess):
             soffice = guess
     return soffice
@@ -1392,15 +1488,23 @@ def docx_to_pdf(path, outdir):
     """Lay the Word file out as a PDF. Microsoft Word gives the same pages the student sees.
     LibreOffice is the fallback and can move page breaks or swap fonts."""
     out = os.path.join(outdir, os.path.splitext(os.path.basename(path))[0] + ".pdf")
-    if os.name == "nt" and word_available():
-        run_word("pdf", path, out)
-        return out, "Microsoft Word"
     soffice = find_soffice()
+    if (os.name == "nt" or MAC) and word_available():
+        try:
+            run_word("pdf", path, out)
+            return out, "Microsoft Word"
+        except ConversionError:
+            if not (MAC and soffice):   # on a Mac LibreOffice is tried when Word refuses
+                raise
     if soffice:
         # LibreOffice's own python can refresh the table of contents before saving
-        lo_py = os.path.join(os.path.dirname(soffice), "python.exe" if os.name == "nt" else "python")
+        if MAC:
+            lo_py = os.path.join(os.path.dirname(os.path.dirname(soffice)), "Resources", "python")
+        else:
+            lo_py = os.path.join(os.path.dirname(soffice), "python.exe" if os.name == "nt" else "python")
         candidates = [lo_py] if os.path.exists(lo_py) else []
-        candidates.append(sys.executable)
+        if not getattr(sys, "frozen", False):
+            candidates.append(sys.executable)
         for py in candidates:
             try:
                 subprocess.run([py, os.path.join(BASE, "lo_convert.py"), soffice, path, out], check=True, timeout=600,
@@ -1413,7 +1517,7 @@ def docx_to_pdf(path, outdir):
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
         if os.path.exists(out):
             return out, "LibreOffice"
-    raise ConversionError(f"{os.path.basename(path)} could not be opened since Microsoft Word was not found. Save it as PDF from Word and check the PDF.")
+    raise ConversionError(f"{os.path.basename(path)} could not be opened because Microsoft Word is not on this computer. Save it as PDF from Word and check the PDF.")
 
 
 # ---------------------------------------------------------------- main
