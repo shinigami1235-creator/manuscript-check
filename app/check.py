@@ -965,7 +965,7 @@ def check_lists(pages, rules, F):
         for p in lp:
             for l in p.lines:
                 t = norm(l.text)
-                m = re.match(rf"^(?:{word}s?\s*)?(\d+(?:\.\d+)?)\s*(.*?)\s*\.*\s*([ivxlc\d()]+)$", t, re.I)
+                m = re.match(rf"^(?:{word}s?\s*)?(\d+(?:\.\d+)*)\s*(.*?)\s*\.*\s*([ivxlc\d()]+)$", t, re.I)
                 if m and not t.upper().startswith(kind) and t.lower() not in (f"{word.lower()}s page",):
                     entries.append((m.group(1), m.group(2).strip(" ."), m.group(3), p, l))
         if not entries:
@@ -984,7 +984,7 @@ def check_lists(pages, rules, F):
         for p in pages:
             if p.kind in ("chapter", "back"):
                 for l in p.lines:
-                    m = re.match(rf"^{word}\s+(\d+(?:\.\d+)?)\b", norm(l.text))
+                    m = re.match(rf"^{word}\s+(\d+(?:\.\d+)*)\b", norm(l.text))
                     if m and m.group(1) not in caps:
                         caps[m.group(1)] = p
         for num, title, shown, p, l in entries:

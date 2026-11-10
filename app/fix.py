@@ -454,7 +454,7 @@ class Fixer:
             if in_table(p) or in_textbox(p):
                 continue
             t = ptext(p).strip()
-            m = re.match(r"^(Table|Figure)\s+\d+(?:\.\d+)?\.\s", t)
+            m = re.match(r"^(Table|Figure)\s+\d+(?:\.\d+)*\.?\s", t)
             if m and len(t) < 250:
                 set_child(get_ppr(p), "pStyle", PPR_ORDER, val=m.group(1) + "Caption")
                 caps[m.group(1)] += 1

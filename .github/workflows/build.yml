@@ -57,6 +57,9 @@ jobs:
       - name: Correct a Word file converted from PDF
         run: python tests/test_decimal_word.py
 
+      - name: Read table numbers such as 4.4.2
+        run: python tests/test_list_numbers.py
+
       - name: Build the program
         run: >
           pyinstaller --noconfirm --windowed --name "Manuscript Check"
