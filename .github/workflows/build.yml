@@ -232,7 +232,11 @@ jobs:
           cat selftest/selftest.log
 
       - name: Open the window
+        # GitHub's Macs may not show windows to a program started from a script, so this does not stop the build yet
+        continue-on-error: true
         run: |
+          python launcher.py --uitest "$PWD/uitest-source" || true
+          cat uitest-source/uitest.log || true
           "$APP/Contents/MacOS/Manuscript Check" --uitest "$PWD/uitest" &
           pid=$!
           for i in $(seq 120); do kill -0 $pid 2>/dev/null || break; sleep 1; done
@@ -286,6 +290,9 @@ jobs:
     needs: [windows, mac]
     if: ${{ !cancelled() && needs.windows.result == 'success' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -316,7 +323,12 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           v="${{ needs.windows.outputs.version }}"
-          gh release create "v$v" release/* --repo "${{ needs.windows.outputs.repo }}" --title "Manuscript Check $v" --notes "$(git log -1 --pretty=%B)"
+          repo="${{ needs.windows.outputs.repo }}"
+          newest=$(gh api "repos/$repo/releases?per_page=20" --jq '.[].tag_name' | sed 's/^v//' | sort -V | tail -1)
+          if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$v" | sort -V | tail -1)" != "$v" ]; then
+            echo "Version $newest is already out, so $v is not published"; exit 0
+          fi
+          gh release create "v$v" release/* --repo "$repo" --latest --title "Manuscript Check $v" --notes "$(git log -1 --pretty=%B)"
 
   update-windows:
     needs: [windows, publish]
