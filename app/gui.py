@@ -154,6 +154,46 @@ class Api:
         open_path(out)
         return out
 
+    # ---- review
+    def _item(self, item_id):
+        return next((i for i in self._items if i.id == item_id and i.F is not None), None)
+
+    def review(self, item_id):
+        item = self._item(item_id)
+        if not item:
+            return None
+        F = item.F
+        PT = check.PT_TO_CM
+        order = sorted(F.items, key=lambda f: (f["level"] != "fix", f["page"] or 0))
+        pages = [{"no": p.no, "label": p.label_line.text.strip() if p.label_line else "",
+                  "w": p.width / PT, "h": p.height / PT} for p in F.context["pages"]]
+        findings = [{"id": f["id"], "n": n, "level": f["level"], "area": f["area"], "message": f["message"],
+                     "page": f["page"], "pages": sorted({b[0] for b in f["boxes"]} | set(f["pages"]) | ({f["page"]} if f["page"] else set())),
+                     "boxes": [[b[0], *b[1]] for b in f["boxes"]], "ignored": f["id"] in F.ignored}
+                    for n, f in enumerate(order, 1)]
+        return {"id": item.id, "name": item.name, "pages": pages, "findings": findings}
+
+    def review_page(self, item_id, page_no):
+        import base64
+        item = self._item(item_id)
+        if not item:
+            return ""
+        return "data:image/jpeg;base64," + base64.b64encode(check.page_image(item.F, int(page_no))).decode()
+
+    def set_ignored(self, item_id, finding_id, ignored):
+        item = self._item(item_id)
+        if not item:
+            return None
+        (item.F.ignored.add if ignored else item.F.ignored.discard)(int(finding_id))
+        item.recount()
+        return {"fix": item.fix_count, "check": item.check_count, "ignored": item.ignored}
+
+    def finish_review(self, item_id):
+        item = self._item(item_id)
+        if item:
+            check.rewrite(item.F)
+        return self.state()
+
     # ---- updates
     def _check_updates(self):
         try:

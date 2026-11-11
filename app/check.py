@@ -192,6 +192,7 @@ class Page:
         self.height = cm(pg.height)
         self.chars = [c for c in pg.chars if c["text"].strip()]
         self.images = [(cm(i["x0"]), cm(i["top"]), cm(i["x1"]), cm(i["bottom"])) for i in pg.images]
+        self.stamps = []
         all_lines = read_lines(pg, no)
         pn = rules["page_number"]
         if pn.get("position", "top") == "bottom":
@@ -223,14 +224,16 @@ class Page:
 class Findings:
     def __init__(self):
         self.items = []
+        self.ignored = set()   # ids the reviewer left out of the report
+        self.context = {}      # what rewrite() needs to write the report again
 
     def add(self, level, area, message, page=None, rule_source=None, boxes=None, pages=None):
         """boxes: [(pdf page, bbox in points)] drawn on the page. pages: extra pages that get the note with no box."""
-        self.items.append({"level": level, "area": area, "message": message, "page": page,
+        self.items.append({"id": len(self.items), "level": level, "area": area, "message": message, "page": page,
                            "source": rule_source, "boxes": boxes or [], "pages": list(pages or [])})
 
     def numbered(self):
-        items = sorted(self.items, key=lambda f: (f["level"] != "fix", f["page"] or 0))
+        items = sorted((f for f in self.items if f["id"] not in self.ignored), key=lambda f: (f["level"] != "fix", f["page"] or 0))
         for i, f in enumerate(items, 1):
             f["n"] = i
         return items
@@ -908,7 +911,7 @@ def check_titles(pages, rules, F):
         rest = cover.lines[by_i[0]:]
         bad = [l for l in rest if abs(l.size - rules["sizes"]["cover_text_pt"]) > 0.3 or not l.bold]
         if bad:
-            F.add("fix", "Cover", f"{len(bad)} cover lines are not {rules['sizes']['cover_text_pt']:g} pt bold. Set them to {rules['sizes']['cover_text_pt']:g} pt bold.", cover.no, rules["sizes"]["source"],
+            F.add("fix", "Cover", f"{len(bad)} cover {'line is' if len(bad) == 1 else 'lines are'} not {rules['sizes']['cover_text_pt']:g} pt bold. Set them to {rules['sizes']['cover_text_pt']:g} pt bold.", cover.no, rules["sizes"]["source"],
                   [(cover.no, l.bbox_pt()) for l in bad])
         import difflib
         have = [norm(l.text).upper() for l in rest]
@@ -1518,6 +1521,35 @@ def docx_to_pdf(path, outdir):
 
 # ---------------------------------------------------------------- main
 
+STAMP_RE = re.compile(r"^(Ref\.?|Reference)\s*(code|no\.?|number)\s*[:.]", re.I)
+
+
+def stamp_key(text):
+    """The same stamp with a different ID on each page gives the same key."""
+    return re.sub(r"[A-Za-z0-9]*\d[A-Za-z0-9]*", "#", norm(text)).lower()
+
+
+def drop_stamps(pages, rules):
+    """Takes out text a school or library stamps in the margin of every page, such as "Ref. code: 25666529040468VQK"."""
+    m = rules["margins"]
+    def in_margin(p, l):
+        return l.bottom > p.height - m["bottom_cm"] + 0.3 or l.top < m["top_text_cm"] - 0.8
+    seen = defaultdict(set)
+    for p in pages:
+        for l in p.lines:
+            if in_margin(p, l):
+                seen[(stamp_key(l.text), round(l.top))].add(p.no)
+    repeated = {k for k, ps in seen.items() if len(ps) >= max(3, len(pages) // 2)}
+    for p in pages:
+        p.stamps = [l for l in p.lines if in_margin(p, l) and (STAMP_RE.match(norm(l.text)) or (stamp_key(l.text), round(l.top)) in repeated)]
+        if not p.stamps:
+            continue
+        p.lines = [l for l in p.lines if l not in p.stamps]
+        boxes = [l.bbox_pt() for l in p.stamps]
+        p.chars = [c for c in p.chars if not any(b[0] - 1 <= c["x0"] and c["x1"] <= b[2] + 1 and b[1] - 2 <= c["top"] and c["bottom"] <= b[3] + 2
+                                                 for b in boxes)]
+
+
 def measure_ink(pdf_path, pages, rules):
     try:
         import pypdfium2 as pdfium
@@ -1529,6 +1561,11 @@ def measure_ink(pdf_path, pages, rules):
     for p in pages:
         img = doc[p.no - 1].render(scale=72 / 72, grayscale=True).to_pil()
         px_per_cm = img.width / p.width
+        if getattr(p, "stamps", None):
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(img)
+            for l in p.stamps:
+                draw.rectangle([(l.x0 - 0.1) * px_per_cm, (l.top - 0.1) * px_per_cm, (l.x1 + 0.1) * px_per_cm, (l.bottom + 0.1) * px_per_cm], fill=255)
         body = img.crop((0, int(zone * px_per_cm), img.width, img.height))
         box = ImageOps.invert(body).point(lambda v: 255 if v > 60 else 0).getbbox()
         if box:
@@ -1567,6 +1604,7 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
         raise ConversionError(f"{src_name} could not be opened as a PDF ({type(e).__name__}).")
     if sum(len(p.chars) for p in pages) < 40 * max(1, len(pages)):
         raise ConversionError(f"{src_name} is a scan with almost no text. Ask for the PDF saved from Word.")
+    drop_stamps(pages, rules)
     measure_ink(pdf_path, pages, rules)
     headings = classify(pages, rules, F)
     check_page_size(pages, rules, F)
@@ -1587,11 +1625,39 @@ def run(path, rules_path=DEFAULT_RULES, outdir=None):
     base = os.path.splitext(src_name)[0]
     report = os.path.join(outdir, f"{base} - format report.html")
     marked = os.path.join(outdir, f"{base} - marked pages.pdf")
-    write_report(report, src_name, pages, F, rules)
-    write_corrections_pdf(pdf_path, marked, src_name, pages, F, rules)
     if tmp:
+        # the PDF Word made is the one the page numbers in the report refer to
+        kept = os.path.join(outdir, f"{base} - as checked.pdf")
+        shutil.copyfile(pdf_path, kept)
         shutil.rmtree(tmp, ignore_errors=True)
+        pdf_path = kept
+    for p in pages:
+        p.chars = None   # the checks are done and these take most of the memory
+    F.context = {"pdf": pdf_path, "src_name": src_name, "pages": pages, "rules": rules, "report": report, "marked": marked}
+    rewrite(F)
     return report, marked, F, pages, headings
+
+
+def rewrite(F):
+    """Writes the report and the marked pages, leaving out what the reviewer ignored."""
+    c = F.context
+    write_report(c["report"], c["src_name"], c["pages"], F, c["rules"])
+    write_corrections_pdf(c["pdf"], c["marked"], c["src_name"], c["pages"], F, c["rules"])
+
+
+def page_image(F, page_no, width=900):
+    """One page as a PNG for the review window."""
+    import io
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument(F.context["pdf"])
+    try:
+        pg = doc[page_no - 1]
+        img = pg.render(scale=width / pg.get_width()).to_pil()
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=82)
+        return buf.getvalue()
+    finally:
+        doc.close()
 
 
 def pick_rules(given=None):

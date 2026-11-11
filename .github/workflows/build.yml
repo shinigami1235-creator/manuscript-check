@@ -60,6 +60,9 @@ jobs:
       - name: Read table numbers such as 4.4.2
         run: python tests/test_list_numbers.py
 
+      - name: Leave out school stamps and ignored problems
+        run: python tests/test_review.py
+
       - name: Build the program
         run: >
           pyinstaller --noconfirm --windowed --name "Manuscript Check"

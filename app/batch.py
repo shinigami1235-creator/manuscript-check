@@ -77,10 +77,19 @@ class Item:
         self.fix_count = self.check_count = self.pages = None
         self.report = self.corrections = self.fixed = self.changes = None
         self.findings = []
+        self.F = None          # kept for the review window
+        self.ignored = 0
+
+    def recount(self):
+        items = self.F.numbered()
+        self.findings = items
+        self.fix_count = sum(1 for f in items if f["level"] == "fix")
+        self.check_count = len(items) - self.fix_count
+        self.ignored = len(self.F.ignored)
 
     def to_dict(self):
         return {k: getattr(self, k) for k in ("id", "path", "name", "kind", "status", "message", "started", "fix_count", "check_count", "pages",
-                                               "report", "corrections", "fixed", "changes")}
+                                               "report", "corrections", "fixed", "changes", "ignored")}
 
 
 def safe_name(name):
@@ -138,10 +147,8 @@ class Batch:
             report, corrections, F, pages, _ = check.run(item.path, self.rules_path, outdir)
             item.report, item.corrections = report, corrections
             item.pages = len(pages)
-            items = F.numbered()
-            item.findings = items
-            item.fix_count = sum(1 for f in items if f["level"] == "fix")
-            item.check_count = len(items) - item.fix_count
+            item.F = F
+            item.recount()
             if item.kind == "Word" and self.make_fixed:
                 item.status = "fixing"
                 try:
